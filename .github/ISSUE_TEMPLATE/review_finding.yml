@@ -1,0 +1,71 @@
+name: Review finding
+description: Track a QA, Security, Architecture, or maintainer review finding
+title: "[review] "
+labels: ["review-finding", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for actionable review findings that should be tracked publicly.
+        Include sanitized evidence only.
+  - type: dropdown
+    id: review-lane
+    attributes:
+      label: Review lane
+      options:
+        - QA / Correctness
+        - Security
+        - Architecture
+        - Maintainer review
+        - Automated check
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - P0 release blocker
+        - P1 serious issue
+        - P2 meaningful issue
+        - P3 cleanup or minor issue
+    validations:
+      required: true
+  - type: dropdown
+    id: confidence
+    attributes:
+      label: Confidence
+      options:
+        - High
+        - Medium
+        - Low
+    validations:
+      required: true
+  - type: textarea
+    id: finding
+    attributes:
+      label: Finding
+      description: State the issue in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Include file paths, lines, commands, traces, or reproduction notes.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: What could break, become unsafe, or drift from the specification?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What must be true before this finding can be closed?
+    validations:
+      required: true

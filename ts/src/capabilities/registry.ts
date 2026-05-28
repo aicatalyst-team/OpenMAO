@@ -1,0 +1,590 @@
+import { createHash } from "node:crypto";
+
+import {
+  ApprovalPayloadSchema,
+  type Capability,
+  type CapabilityCall,
+  CapabilityCallSchema,
+  type CapabilityResult,
+  CapabilityResultSchema,
+  EventPayloadSchema,
+  NodeEffectSchema,
+  newId,
+  type PolicyDecision,
+  PolicyDecisionSchema,
+  utcNow,
+} from "../contracts/index.js";
+import { ApprovalService, type GovernanceService } from "../governance/index.js";
+import {
+  CapabilityCallStore,
+  CapabilityResultStore,
+  CapabilityStore,
+  type Database,
+  EventStore,
+  NodeEffectStore,
+  RunStore,
+  TaskEnvelopeStore,
+} from "../persistence/index.js";
+import type { CapabilityProvider } from "./providers.js";
+
+export type CapabilityInvocation = {
+  call: CapabilityCall;
+  decision: PolicyDecision;
+  result?: CapabilityResult | null;
+  approval_id?: string | null;
+};
+
+type ExecutableCapability = {
+  call: CapabilityCall;
+  capability: Capability;
+  decision: PolicyDecision;
+  approvalId: string | null;
+};
+
+type InvokeTransactionResult =
+  | { mode: "pending"; invocation: CapabilityInvocation }
+  | { mode: "execute"; executable: ExecutableCapability };
+
+export class CapabilityRegistryError extends Error {}
+
+export class CapabilityRegistryService {
+  private readonly approvals: ApprovalService;
+  private readonly capabilities: CapabilityStore;
+  private readonly calls: CapabilityCallStore;
+  private readonly results: CapabilityResultStore;
+  private readonly effects: NodeEffectStore;
+  private readonly events: EventStore;
+  private readonly runs: RunStore;
+  private readonly tasks: TaskEnvelopeStore;
+  private readonly providers: Map<string, CapabilityProvider>;
+
+  constructor(
+    private readonly database: Database,
+    private readonly governance: GovernanceService,
+    providers: CapabilityProvider[],
+  ) {
+    this.approvals = new ApprovalService(database);
+    this.capabilities = new CapabilityStore(database);
+    this.calls = new CapabilityCallStore(database);
+    this.results = new CapabilityResultStore(database);
+    this.effects = new NodeEffectStore(database);
+    this.events = new EventStore(database);
+    this.runs = new RunStore(database);
+    this.tasks = new TaskEnvelopeStore(database);
+    this.providers = new Map(providers.map((provider) => [provider.name, provider]));
+  }
+
+  register(capability: Capability): Capability {
+    return this.database.transaction(() => {
+      const registered = this.capabilities.save(capability);
+      this.events.append({
+        workspace_id: registered.workspace_id,
+        kind: "capability.registered",
+        actor: "capability_registry",
+        payload: EventPayloadSchema.parse({ data: { capability: registered } }),
+        idempotency_key: `${registered.workspace_id}:${registered.name}:registered`,
+      });
+      return registered;
+    });
+  }
+
+  invoke(callInput: CapabilityCall): CapabilityInvocation {
+    const transactionResult = this.database.transaction<InvokeTransactionResult>(() => {
+      const call = CapabilityCallSchema.parse(callInput);
+      const capability = this.capabilities.get(call.workspace_id, call.capability_name);
+      if (!capability) {
+        throw new CapabilityRegistryError(`capability not registered: ${call.capability_name}`);
+      }
+
+      this.validatePayload(call.input, capability.canonical_input_schema, "input");
+      const existingCall = this.calls.getByIdempotencyKey(call.workspace_id, call.idempotency_key);
+      if (!existingCall) {
+        this.requireProviderExecutableRun(call);
+      }
+      const recordedCall = this.calls.record(call);
+      this.emitCallPersisted(recordedCall);
+      this.events.append({
+        workspace_id: recordedCall.workspace_id,
+        run_id: recordedCall.run_id,
+        kind: "capability.requested",
+        actor: "capability_registry",
+        payload: EventPayloadSchema.parse({ data: { capability_call: recordedCall } }),
+        idempotency_key: `${recordedCall.id}:requested`,
+      });
+
+      const existingResult = this.results.getForCall(recordedCall.workspace_id, recordedCall.id);
+      if (existingResult) {
+        return {
+          mode: "pending",
+          invocation: {
+            call: recordedCall,
+            decision: this.requireRecordedCapabilityDecision(recordedCall),
+            result: existingResult,
+          },
+        };
+      }
+
+      const existingApproval = this.approvals.approvals.findForTarget({
+        workspace_id: recordedCall.workspace_id,
+        target_type: "capability_call",
+        target_id: recordedCall.id,
+        statuses: new Set(["pending", "approved", "rejected"]),
+      });
+      if (existingApproval) {
+        const decision = this.requireRecordedCapabilityDecision(recordedCall);
+        if (existingApproval.status === "approved") {
+          return {
+            mode: "execute",
+            executable: {
+              call: recordedCall,
+              capability,
+              decision,
+              approvalId: existingApproval.id,
+            },
+          };
+        }
+        return {
+          mode: "pending",
+          invocation: {
+            call: recordedCall,
+            decision,
+            approval_id: existingApproval.id,
+          },
+        };
+      }
+
+      const recordedDecision = this.getRecordedCapabilityDecision(recordedCall);
+      if (recordedDecision) {
+        if (recordedDecision.outcome === "block") {
+          return {
+            mode: "pending",
+            invocation: {
+              call: recordedCall,
+              decision: recordedDecision,
+              result: this.recordBlockedResult(recordedCall, recordedDecision.reason),
+            },
+          };
+        }
+        return {
+          mode: "execute",
+          executable: {
+            call: recordedCall,
+            capability,
+            decision: recordedDecision,
+            approvalId: null,
+          },
+        };
+      }
+
+      let decision = this.decideCall(recordedCall, capability);
+      if (decision.outcome === "require_approval") {
+        const approvalId = this.approvalIdForCall(recordedCall);
+        decision = PolicyDecisionSchema.parse({ ...decision, approval_id: approvalId });
+        decision = this.recordCapabilityDecision(decision, recordedCall);
+        const approval = this.approvals.request({
+          approval_id: approvalId,
+          workspace_id: recordedCall.workspace_id,
+          run_id: recordedCall.run_id,
+          action: "capability.call",
+          requested_by: recordedCall.requested_by,
+          payload: ApprovalPayloadSchema.parse({
+            target_type: "capability_call",
+            target_id: recordedCall.id,
+            reason: decision.reason,
+            data: { capability_call: recordedCall },
+          }),
+          on_approve: "resume_run",
+          on_reject: "fail_run",
+        });
+        return {
+          mode: "pending",
+          invocation: { call: recordedCall, decision, approval_id: approval.id },
+        };
+      }
+
+      decision = this.recordCapabilityDecision(decision, recordedCall);
+      if (decision.outcome === "block") {
+        return {
+          mode: "pending",
+          invocation: {
+            call: recordedCall,
+            decision,
+            result: this.recordBlockedResult(recordedCall, decision.reason),
+          },
+        };
+      }
+
+      return {
+        mode: "execute",
+        executable: { call: recordedCall, capability, decision, approvalId: null },
+      };
+    });
+
+    if (transactionResult.mode === "pending") {
+      return transactionResult.invocation;
+    }
+
+    const executable = transactionResult.executable;
+    const result = this.executeProvider(executable.call, executable.capability);
+    return {
+      call: executable.call,
+      decision: executable.decision,
+      result,
+      approval_id: executable.approvalId,
+    };
+  }
+
+  resumeApprovedCall(approvalId: string, input: { workspace_id: string }): CapabilityInvocation {
+    const approval = this.approvals.approvals.get(approvalId);
+    if (!approval) {
+      throw new CapabilityRegistryError(`approval request not found: ${approvalId}`);
+    }
+    if (approval.workspace_id !== input.workspace_id) {
+      throw new CapabilityRegistryError(
+        `approval request does not belong to workspace: ${approvalId}`,
+      );
+    }
+    if (approval.status !== "approved") {
+      throw new CapabilityRegistryError(`approval request is not approved: ${approvalId}`);
+    }
+    if (approval.payload.target_type !== "capability_call") {
+      throw new CapabilityRegistryError(
+        `approval does not target a capability call: ${approvalId}`,
+      );
+    }
+    const call = this.calls.get(approval.payload.target_id);
+    if (!call) {
+      throw new CapabilityRegistryError(`capability call not found: ${approval.payload.target_id}`);
+    }
+    return this.invoke(call);
+  }
+
+  private decideCall(call: CapabilityCall, capability: Capability): PolicyDecision {
+    const taskBoundaryBlockReason = this.taskBoundaryBlockReason(call);
+    if (taskBoundaryBlockReason) {
+      return this.policyBlock(call, taskBoundaryBlockReason);
+    }
+
+    if (!capability.providers.includes(call.provider)) {
+      return this.policyBlock(call, `Capability provider is not declared: ${call.provider}.`);
+    }
+    if (!this.providers.has(call.provider)) {
+      return this.policyBlock(call, `Capability provider is not available: ${call.provider}.`);
+    }
+    return this.governance.decideCapability(call, capability);
+  }
+
+  private taskBoundaryBlockReason(call: CapabilityCall): string | null {
+    const task = this.tasks.get(call.task_id);
+    if (!task) {
+      return `Task envelope not found for capability call: ${call.task_id}.`;
+    }
+    if (task.workspace_id !== call.workspace_id) {
+      return "Capability call workspace does not match task envelope.";
+    }
+    if (task.run_id !== call.run_id) {
+      return "Capability call run does not match task envelope.";
+    }
+    if (task.to_agent !== call.requested_by) {
+      return "Capability caller is not the task envelope assignee.";
+    }
+    if (!task.allowed_capabilities.includes(call.capability_name)) {
+      return `Capability is not allowed by the task envelope: ${call.capability_name}.`;
+    }
+    return null;
+  }
+
+  private policyBlock(call: CapabilityCall, reason: string): PolicyDecision {
+    return PolicyDecisionSchema.parse({
+      id: newId("decision"),
+      workspace_id: call.workspace_id,
+      run_id: call.run_id,
+      action: "capability.call",
+      target_type: "capability_call",
+      target_id: call.id,
+      outcome: "block",
+      reason,
+    });
+  }
+
+  private recordCapabilityDecision(decision: PolicyDecision, call: CapabilityCall): PolicyDecision {
+    const stableDecision = PolicyDecisionSchema.parse({
+      ...decision,
+      id: this.decisionIdForCall(call),
+    });
+    return this.governance.recordDecision(stableDecision, `${call.id}:policy_decision`);
+  }
+
+  private requireRecordedCapabilityDecision(call: CapabilityCall): PolicyDecision {
+    const decision = this.getRecordedCapabilityDecision(call);
+    if (!decision) {
+      throw new CapabilityRegistryError(
+        `recorded capability policy decision not found: ${call.id}`,
+      );
+    }
+    return decision;
+  }
+
+  private getRecordedCapabilityDecision(call: CapabilityCall): PolicyDecision | null {
+    return this.governance.getRecordedDecision({
+      workspace_id: call.workspace_id,
+      idempotency_key: `${call.id}:policy_decision`,
+    });
+  }
+
+  private executeProvider(call: CapabilityCall, capability: Capability): CapabilityResult {
+    this.requireProviderExecutableRun(call);
+    const existing = this.results.getForCall(call.workspace_id, call.id);
+    if (existing) {
+      return existing;
+    }
+
+    const provider = this.providers.get(call.provider);
+    if (!provider) {
+      return this.recordFailedResult(
+        call,
+        null,
+        `Capability provider is not available: ${call.provider}.`,
+      );
+    }
+
+    const node = `capability:${call.capability_name}`;
+    const effectKey = `${call.id}:provider`;
+    const { effect, created } = this.ensureProviderEffect(call, node, effectKey);
+    if (!created) {
+      return this.recordFailedResult(
+        call,
+        effect.id,
+        "capability provider execution was already started without a persisted result; refusing to re-execute",
+      );
+    }
+
+    try {
+      const providerResult = provider.execute(call);
+      const result = CapabilityResultSchema.parse({
+        ...providerResult,
+        id: newId("capresult"),
+        workspace_id: call.workspace_id,
+        run_id: call.run_id,
+        call_id: call.id,
+        node_effect_id: effect.id,
+      });
+      if (result.status === "ok") {
+        this.validatePayload(result.output, capability.canonical_output_schema, "output");
+      }
+      return this.recordResultEvent(result, `${call.id}:completed`);
+    } catch (error) {
+      return this.recordResultEvent(
+        CapabilityResultSchema.parse({
+          id: newId("capresult"),
+          workspace_id: call.workspace_id,
+          run_id: call.run_id,
+          call_id: call.id,
+          node_effect_id: effect.id,
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error),
+        }),
+        `${call.id}:completed`,
+      );
+    }
+  }
+
+  private ensureProviderEffect(
+    call: CapabilityCall,
+    node: string,
+    idempotencyKey: string,
+  ): { effect: ReturnType<NodeEffectStore["record"]>; created: boolean } {
+    return this.database.transaction(() => {
+      const existing = this.effects.getByKey(call.run_id, node, idempotencyKey);
+      if (existing) {
+        return { effect: existing, created: false };
+      }
+      const effect = this.effects.record(
+        NodeEffectSchema.parse({
+          id: newId("effect"),
+          workspace_id: call.workspace_id,
+          run_id: call.run_id,
+          node,
+          idempotency_key: idempotencyKey,
+          effect_type: "capability.execute",
+          effect_ref: call.id,
+          created_at: utcNow(),
+        }),
+      );
+      return { effect, created: true };
+    });
+  }
+
+  private requireProviderExecutableRun(call: CapabilityCall): void {
+    const run = this.runs.get(call.run_id);
+    if (!run) {
+      throw new CapabilityRegistryError(`capability call run not found: ${call.run_id}`);
+    }
+    if (run.workspace_id !== call.workspace_id) {
+      throw new CapabilityRegistryError(`capability call workspace does not match run: ${call.id}`);
+    }
+    if (run.status !== "running") {
+      throw new CapabilityRegistryError(
+        `capability provider execution requires a running run: ${run.id}`,
+      );
+    }
+  }
+
+  private recordBlockedResult(call: CapabilityCall, reason: string): CapabilityResult {
+    const existing = this.results.getForCall(call.workspace_id, call.id);
+    if (existing) {
+      return existing;
+    }
+    return this.recordResultEvent(
+      CapabilityResultSchema.parse({
+        id: newId("capresult"),
+        workspace_id: call.workspace_id,
+        run_id: call.run_id,
+        call_id: call.id,
+        status: "blocked",
+        error: reason,
+      }),
+      `${call.id}:blocked`,
+    );
+  }
+
+  private recordFailedResult(
+    call: CapabilityCall,
+    nodeEffectId: string | null,
+    reason: string,
+  ): CapabilityResult {
+    const existing = this.results.getForCall(call.workspace_id, call.id);
+    if (existing) {
+      return existing;
+    }
+    return this.recordResultEvent(
+      CapabilityResultSchema.parse({
+        id: newId("capresult"),
+        workspace_id: call.workspace_id,
+        run_id: call.run_id,
+        call_id: call.id,
+        node_effect_id: nodeEffectId,
+        status: "failed",
+        error: reason,
+      }),
+      `${call.id}:completed`,
+    );
+  }
+
+  private recordResultEvent(result: CapabilityResult, idempotencyKey: string): CapabilityResult {
+    return this.database.transaction(() => {
+      const recorded = this.results.record(result);
+      this.events.append({
+        workspace_id: recorded.workspace_id,
+        run_id: recorded.run_id,
+        kind: recorded.status === "ok" ? "capability.completed" : "capability.failed",
+        actor: "capability_registry",
+        payload: EventPayloadSchema.parse({ data: { capability_result: recorded } }),
+        idempotency_key: idempotencyKey,
+      });
+      return recorded;
+    });
+  }
+
+  private emitCallPersisted(call: CapabilityCall): void {
+    this.events.append({
+      workspace_id: call.workspace_id,
+      run_id: call.run_id,
+      kind: "capability_call.persisted",
+      actor: "capability_registry",
+      payload: EventPayloadSchema.parse({ data: { capability_call: call } }),
+      idempotency_key: `${call.id}:persisted`,
+    });
+  }
+
+  private validatePayload(
+    payload: Record<string, unknown>,
+    schema: Record<string, unknown>,
+    name: string,
+  ): void {
+    validateSchemaValue(payload, schema, name);
+  }
+
+  private approvalIdForCall(call: CapabilityCall): string {
+    return `approval_${this.idSuffix(call.id)}`;
+  }
+
+  private decisionIdForCall(call: CapabilityCall): string {
+    return `decision_${this.idSuffix(call.id)}`;
+  }
+
+  private idSuffix(identifier: string): string {
+    const parts = identifier.split("_", 2);
+    return parts[1] ?? createHash("sha256").update(identifier).digest("hex").slice(0, 32);
+  }
+}
+
+function validateSchemaValue(value: unknown, schema: Record<string, unknown>, path: string): void {
+  const schemaType = schema.type;
+  if (schemaType === "string") {
+    if (typeof value !== "string") {
+      throw new CapabilityRegistryError(`capability ${path} must be a string`);
+    }
+    return;
+  }
+  if (schemaType === "boolean") {
+    if (typeof value !== "boolean") {
+      throw new CapabilityRegistryError(`capability ${path} must be a boolean`);
+    }
+    return;
+  }
+  if (schemaType === "integer") {
+    if (!Number.isInteger(value)) {
+      throw new CapabilityRegistryError(`capability ${path} must be an integer`);
+    }
+    return;
+  }
+  if (schemaType === "number") {
+    if (typeof value !== "number") {
+      throw new CapabilityRegistryError(`capability ${path} must be a number`);
+    }
+    return;
+  }
+  if (schemaType === "array") {
+    if (!Array.isArray(value)) {
+      throw new CapabilityRegistryError(`capability ${path} must be an array`);
+    }
+    const itemSchema = schema.items;
+    if (itemSchema && typeof itemSchema === "object" && !Array.isArray(itemSchema)) {
+      for (const [index, item] of value.entries()) {
+        validateSchemaValue(item, itemSchema as Record<string, unknown>, `${path}[${index}]`);
+      }
+    }
+    return;
+  }
+  if (schemaType === "object") {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      throw new CapabilityRegistryError(`capability ${path} must be an object`);
+    }
+    const objectValue = value as Record<string, unknown>;
+    const required = schema.required;
+    if (!Array.isArray(required)) {
+      throw new CapabilityRegistryError(`capability ${path} schema required must be a list`);
+    }
+    const missing = required.filter(
+      (field) => typeof field === "string" && !(field in objectValue),
+    );
+    if (missing.length > 0) {
+      throw new CapabilityRegistryError(
+        `capability ${path} missing required fields: ${missing.join(", ")}`,
+      );
+    }
+    const properties = schema.properties;
+    if (properties && (typeof properties !== "object" || Array.isArray(properties))) {
+      throw new CapabilityRegistryError(`capability ${path} schema properties must be an object`);
+    }
+    for (const [key, item] of Object.entries(objectValue)) {
+      const propertySchema = (properties as Record<string, unknown> | undefined)?.[key];
+      if (propertySchema && typeof propertySchema === "object" && !Array.isArray(propertySchema)) {
+        validateSchemaValue(item, propertySchema as Record<string, unknown>, `${path}.${key}`);
+      }
+    }
+    return;
+  }
+  throw new CapabilityRegistryError(`capability ${path} schema type is unsupported`);
+}

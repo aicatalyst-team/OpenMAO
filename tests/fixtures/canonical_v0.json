@@ -1,0 +1,435 @@
+{
+  "agent_outcome": {
+    "artifacts": [
+      {
+        "artifact_id": "artifact_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "content_ref": "artifacts/onboarding_brief.md"
+      }
+    ],
+    "cost": {
+      "model": "mock",
+      "provider": "mock",
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "usd": 0.0
+    },
+    "memory_writes": [
+      "mem_dddddddddddddddddddddddddddddddd"
+    ],
+    "promotion_candidates": [
+      "promo_cccccccccccccccccccccccccccccccc"
+    ],
+    "status": "completed",
+    "summary": "Drafted an onboarding brief from seeded findings.",
+    "task_id": "task_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "trace_ref": "trace_33333333333333333333333333333333"
+  },
+  "agents": [
+    {
+      "id": "agent_55555555555555555555555555555555",
+      "identity": "Coordinator Agent",
+      "memory_scope": {
+        "read": [
+          "collective"
+        ],
+        "write": [
+          "individual"
+        ]
+      },
+      "model_binding": "mock",
+      "role_id": "role_33333333333333333333333333333333",
+      "status": "idle",
+      "workspace_id": "ws_11111111111111111111111111111111"
+    },
+    {
+      "id": "agent_66666666666666666666666666666666",
+      "identity": "Research Agent",
+      "model_binding": "mock",
+      "role_id": "role_44444444444444444444444444444444",
+      "status": "idle",
+      "workspace_id": "ws_11111111111111111111111111111111"
+    }
+  ],
+  "approval_request": {
+    "action": "memory.promote",
+    "created_at": "2026-05-27T15:20:07Z",
+    "id": "approval_11111111111111111111111111111111",
+    "on_approve": "resume_run",
+    "on_reject": "fail_run",
+    "payload": {
+      "data": {
+        "promotion_candidate_id": "promo_cccccccccccccccccccccccccccccccc"
+      },
+      "reason": "Promote one reusable onboarding lesson into collective memory.",
+      "target_id": "promo_cccccccccccccccccccccccccccccccc",
+      "target_type": "promotion_candidate"
+    },
+    "requested_by": "agent_55555555555555555555555555555555",
+    "run_id": "run_99999999999999999999999999999999",
+    "status": "pending",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "artifact": {
+    "content_hash": "sha256:example",
+    "content_ref": "artifacts/onboarding_brief.md",
+    "created_at": "2026-05-27T15:20:06Z",
+    "id": "artifact_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "produced_by": "agent_55555555555555555555555555555555",
+    "task_id": "task_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "type": "markdown",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "capability": {
+    "canonical_input_schema": {
+      "properties": {
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "canonical_output_schema": {
+      "properties": {
+        "findings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "findings"
+      ],
+      "type": "object"
+    },
+    "default_permission": "enabled",
+    "description": "Return seeded information for the onboarding brief demo.",
+    "name": "mock.research_lookup",
+    "providers": [
+      "mock"
+    ],
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "capability_call": {
+    "capability_name": "mock.research_lookup",
+    "id": "capcall_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "idempotency_key": "run_99999999999999999999999999999999:research_lookup",
+    "input": {
+      "query": "onboarding brief"
+    },
+    "provider": "mock",
+    "requested_by": "agent_66666666666666666666666666666666",
+    "risk_level": "low",
+    "run_id": "run_99999999999999999999999999999999",
+    "task_id": "task_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "capability_result": {
+    "artifacts": [],
+    "call_id": "capcall_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "id": "capresult_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "node_effect_id": "effect_55555555555555555555555555555555",
+    "output": {
+      "findings": [
+        "Use explicit assumptions.",
+        "Prefer short, reliable artifacts."
+      ]
+    },
+    "run_id": "run_99999999999999999999999999999999",
+    "status": "ok",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "evaluation": {
+    "id": "eval_22222222222222222222222222222222",
+    "notes": "The artifact satisfies the demo success criteria.",
+    "passed": true,
+    "rubric": "v0 demo artifact quality",
+    "score": 0.9,
+    "task_id": "task_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "event": {
+    "actor": "spine",
+    "id": "evt_11111111111111111111111111111111",
+    "idempotency_key": "run_99999999999999999999999999999999:approval_requested",
+    "kind": "approval.requested",
+    "payload": {
+      "data": {
+        "approval_id": "approval_11111111111111111111111111111111"
+      },
+      "refs": [
+        "approval_11111111111111111111111111111111"
+      ]
+    },
+    "run_id": "run_99999999999999999999999999999999",
+    "run_seq": 8,
+    "seq": 12,
+    "timestamp": "2026-05-27T15:20:08Z",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "goal": {
+    "constraints": [
+      "no external credentials"
+    ],
+    "id": "goal_77777777777777777777777777777777",
+    "objective": "Create a short onboarding brief for a new member.",
+    "owner_role": "role_33333333333333333333333333333333",
+    "status": "active",
+    "success_metrics": [
+      "brief is concise",
+      "assumptions are explicit"
+    ],
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "memory_entry": {
+    "confidence": 0.8,
+    "content": "New members benefit from a short brief with explicit assumptions.",
+    "created_at": "2026-05-27T15:20:05Z",
+    "id": "mem_dddddddddddddddddddddddddddddddd",
+    "kind": "semantic",
+    "owner_id": "agent_55555555555555555555555555555555",
+    "provenance": {
+      "agent_id": "agent_55555555555555555555555555555555",
+      "run_id": "run_99999999999999999999999999999999",
+      "source_event_id": "evt_11111111111111111111111111111111",
+      "task_id": "task_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "scope": "individual",
+    "status": "confirmed",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "model_request": {
+    "id": "modelreq_77777777777777777777777777777777",
+    "idempotency_key": "run_99999999999999999999999999999999:model",
+    "model_binding": "mock",
+    "purpose": "mock demo composition",
+    "requested_by": "agent_55555555555555555555555555555555",
+    "run_id": "run_99999999999999999999999999999999",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "model_response": {
+    "cost": {
+      "model": "mock",
+      "provider": "mock",
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "usd": 0.0
+    },
+    "id": "modelres_88888888888888888888888888888888",
+    "output_ref": "artifacts/onboarding_brief.md",
+    "request_id": "modelreq_77777777777777777777777777777777",
+    "status": "ok",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "node_effect": {
+    "content_hash": "sha256:example",
+    "created_at": "2026-05-27T15:20:09Z",
+    "effect_ref": "artifact_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "effect_type": "artifact.write",
+    "id": "effect_55555555555555555555555555555555",
+    "idempotency_key": "run_99999999999999999999999999999999:artifact",
+    "node": "artifact_created",
+    "run_id": "run_99999999999999999999999999999999",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "org_change_proposal": {
+    "change_type": "role",
+    "created_at": "2026-05-27T15:20:11Z",
+    "id": "orgchange_99999999999999999999999999999999",
+    "patch_json": {
+      "role_id": "role_33333333333333333333333333333333"
+    },
+    "proposed_by": "agent_55555555555555555555555555555555",
+    "rationale": "Placeholder future seam for governed org changes.",
+    "status": "draft",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "organization": {
+    "goals": [
+      "Create a short onboarding brief for a new member."
+    ],
+    "id": "org_22222222222222222222222222222222",
+    "mission": "Produce useful, reliable internal knowledge artifacts.",
+    "name": "Acme Learning Lab",
+    "policies": [
+      "Human approval is required before collective memory promotion."
+    ],
+    "type": "custom",
+    "values": [
+      "clarity",
+      "reliability",
+      "explicit assumptions"
+    ],
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "policy": {
+    "applies_to": [
+      "memory.promote"
+    ],
+    "enforcement": "require_approval",
+    "id": "policy_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "risk_class": "medium",
+    "rule": "Collective memory writes require human approval.",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "policy_decision": {
+    "action": "memory.promote",
+    "approval_id": "approval_11111111111111111111111111111111",
+    "id": "decision_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "outcome": "require_approval",
+    "reason": "Collective memory writes are approval-gated in v0.",
+    "run_id": "run_99999999999999999999999999999999",
+    "source": "structural",
+    "target_id": "promo_cccccccccccccccccccccccccccccccc",
+    "target_type": "promotion_candidate",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "promotion_candidate": {
+    "corroboration_count": 1,
+    "created_at": "2026-05-27T15:20:06Z",
+    "id": "promo_cccccccccccccccccccccccccccccccc",
+    "proposed_by": "agent_55555555555555555555555555555555",
+    "proposed_content": "A short onboarding brief should include explicit assumptions.",
+    "rationale": "Useful reusable guidance for future onboarding tasks.",
+    "source_memory_entry": "mem_dddddddddddddddddddddddddddddddd",
+    "status": "pending",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "roles": [
+    {
+      "capability_grants": [
+        "memory.read",
+        "memory.write",
+        "promotion.propose"
+      ],
+      "id": "role_33333333333333333333333333333333",
+      "name": "coordinator",
+      "purpose": "Plan work, delegate bounded subtasks, compose final artifacts.",
+      "responsibilities": [
+        "delegate one research subtask",
+        "compose final brief"
+      ],
+      "workspace_id": "ws_11111111111111111111111111111111"
+    },
+    {
+      "capability_grants": [
+        "mock.research_lookup",
+        "memory.write"
+      ],
+      "id": "role_44444444444444444444444444444444",
+      "name": "researcher",
+      "purpose": "Gather seeded information and return structured findings.",
+      "responsibilities": [
+        "call mock research lookup"
+      ],
+      "workspace_id": "ws_11111111111111111111111111111111"
+    }
+  ],
+  "run": {
+    "active_node": "approval_requested",
+    "created_at": "2026-05-27T15:20:01Z",
+    "id": "run_99999999999999999999999999999999",
+    "status": "suspended_approval",
+    "suspended_approval_id": "approval_11111111111111111111111111111111",
+    "updated_at": "2026-05-27T15:20:08Z",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "task_envelope": {
+    "allowed_capabilities": [
+      "mock.research_lookup"
+    ],
+    "approval_gates": [],
+    "context_refs": [
+      "mem_dddddddddddddddddddddddddddddddd"
+    ],
+    "from_agent": "agent_55555555555555555555555555555555",
+    "id": "task_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "objective": "Gather seeded information for onboarding.",
+    "run_id": "run_99999999999999999999999999999999",
+    "to_agent": "agent_66666666666666666666666666666666",
+    "work_item_id": "work_88888888888888888888888888888888",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "trace": {
+    "cost": {
+      "model": "mock",
+      "provider": "mock",
+      "tokens_in": 0,
+      "tokens_out": 0,
+      "usd": 0.0
+    },
+    "event_ids": [
+      "evt_11111111111111111111111111111111"
+    ],
+    "id": "trace_33333333333333333333333333333333",
+    "node": "approval_requested",
+    "run_id": "run_99999999999999999999999999999999",
+    "timestamp": "2026-05-27T15:20:08Z",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "work_item": {
+    "approval_gates": [
+      "memory.promote"
+    ],
+    "evaluation": [
+      "eval_22222222222222222222222222222222"
+    ],
+    "id": "work_88888888888888888888888888888888",
+    "memory_scope": {
+      "read": [
+        "collective"
+      ],
+      "write": [
+        "individual"
+      ]
+    },
+    "objective": "Create a short onboarding brief for a new member.",
+    "owner": "agent_55555555555555555555555555555555",
+    "priority": "medium",
+    "reviewer": "human",
+    "risk_level": "low",
+    "source": {
+      "provider": "openmao"
+    },
+    "status": "queued",
+    "success_criteria": [
+      "brief is short",
+      "assumptions are explicit"
+    ],
+    "title": "Create onboarding brief",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "workspace": {
+    "created_at": "2026-05-27T15:20:00Z",
+    "default_org_id": "org_22222222222222222222222222222222",
+    "id": "ws_11111111111111111111111111111111",
+    "name": "Acme Learning Lab Workspace"
+  },
+  "world_model_snapshot": {
+    "active_goals": [
+      "goal_77777777777777777777777777777777"
+    ],
+    "active_work": [
+      "work_88888888888888888888888888888888"
+    ],
+    "blockers": [],
+    "cache_only": true,
+    "capability_gaps": [],
+    "generated_at": "2026-05-27T15:20:10Z",
+    "id": "world_44444444444444444444444444444444",
+    "latest_run_status": "suspended_approval",
+    "pending_approvals": [
+      "approval_11111111111111111111111111111111"
+    ],
+    "recent_events": [
+      "evt_11111111111111111111111111111111"
+    ],
+    "run_id": "run_99999999999999999999999999999999",
+    "source_run_seq": 8,
+    "source_workspace_seq": 12,
+    "workspace_id": "ws_11111111111111111111111111111111"
+  }
+}

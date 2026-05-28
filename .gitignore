@@ -1,0 +1,50 @@
+# Local tooling
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+dist/
+build/
+
+node_modules/
+coverage/
+.turbo/
+.tsbuildinfo
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# OS/editor
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
+
+# Agent local user state
+.claude/settings.local.json
+.claude/worktrees/
+
+# OpenMAO local runtime and private workspace records
+/.openmao/
+/BUILD_PLAN.md
+/DECISIONS.md
+/STATUS.md
+/MODULE_OWNERSHIP.md
+/WORK_BREAKDOWN.md
+/decisions/
+/internal/
+/sessions/
+/docs/adr/
+/docs/research/
+/docs/sessions/
+/docs/audit-trails/
+/docs/runbooks/
+/docs/SESSION_PROTOCOL.md
+/docs/audits/
+/docs/evidence/
+/docs/templates/APPROVAL_PACKET_TEMPLATE.md
+/docs/templates/AUDIT_REPORT_TEMPLATE.md
+/docs/templates/SESSION_TEMPLATE.md
+/docs/templates/SIGNOFF_LOG_TEMPLATE.md

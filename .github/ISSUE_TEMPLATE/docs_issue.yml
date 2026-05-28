@@ -1,0 +1,43 @@
+name: Documentation issue
+description: Report missing, unclear, or stale public documentation
+title: "[docs] "
+labels: ["documentation", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for public documentation only. Do not include private URLs, private data, or closed-source project material.
+  - type: input
+    id: document
+    attributes:
+      label: Document or page
+      description: Which public file, section, or page needs work?
+      placeholder: README.md, docs/ARCHITECTURE.md, docs/README.md
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: What is unclear or missing?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should the reader understand instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: doc-impact
+    attributes:
+      label: Documentation impact
+      options:
+        - No source-of-truth change
+        - Architecture docs may need an update
+        - Roadmap may need an update
+        - CONTRIBUTING.md may need an update
+        - SECURITY.md may need an update
+        - GOVERNANCE.md may need an update
+        - Unsure
+    validations:
+      required: true

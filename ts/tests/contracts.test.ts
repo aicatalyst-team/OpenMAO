@@ -1,0 +1,143 @@
+import { readFileSync } from "node:fs";
+
+import { describe, expect, it } from "vitest";
+
+import {
+  AgentOutcomeSchema,
+  AgentSchema,
+  ApprovalRequestSchema,
+  ArtifactSchema,
+  CapabilityCallSchema,
+  CapabilityResultSchema,
+  CapabilitySchema,
+  canonicalSchemaBundle,
+  EvaluationSchema,
+  EventSchema,
+  GoalSchema,
+  MemoryEntrySchema,
+  ModelRequestSchema,
+  ModelResponseSchema,
+  NodeEffectSchema,
+  newId,
+  OrganizationSchema,
+  OrgChangeProposalSchema,
+  PolicyDecisionSchema,
+  PolicyOutcomeSchema,
+  PolicySchema,
+  PromotionCandidateSchema,
+  RoleSchema,
+  RunSchema,
+  TaskEnvelopeSchema,
+  TraceSchema,
+  utcNow,
+  validateId,
+  validateUtcTimestamp,
+  WorkItemSchema,
+  WorkspaceSchema,
+  WorldModelSnapshotSchema,
+} from "../src/contracts/index.js";
+
+const fixturePath = new URL("../../tests/fixtures/canonical_v0.json", import.meta.url);
+const schemaPath = new URL("../../schemas/canonical/v0.schema.json", import.meta.url);
+
+function loadFixture(): Record<string, unknown> {
+  return JSON.parse(readFileSync(fixturePath, "utf8")) as Record<string, unknown>;
+}
+
+describe("canonical TypeScript contracts", () => {
+  it("validates the canonical v0 fixture", () => {
+    const fixture = loadFixture();
+
+    WorkspaceSchema.parse(fixture.workspace);
+    OrganizationSchema.parse(fixture.organization);
+    for (const role of fixture.roles as unknown[]) {
+      RoleSchema.parse(role);
+    }
+    for (const agent of fixture.agents as unknown[]) {
+      AgentSchema.parse(agent);
+    }
+    GoalSchema.parse(fixture.goal);
+    WorkItemSchema.parse(fixture.work_item);
+    RunSchema.parse(fixture.run);
+    TaskEnvelopeSchema.parse(fixture.task_envelope);
+    AgentOutcomeSchema.parse(fixture.agent_outcome);
+    CapabilitySchema.parse(fixture.capability);
+    CapabilityCallSchema.parse(fixture.capability_call);
+    CapabilityResultSchema.parse(fixture.capability_result);
+    MemoryEntrySchema.parse(fixture.memory_entry);
+    PromotionCandidateSchema.parse(fixture.promotion_candidate);
+    ArtifactSchema.parse(fixture.artifact);
+    PolicySchema.parse(fixture.policy);
+    PolicyDecisionSchema.parse(fixture.policy_decision);
+    ApprovalRequestSchema.parse(fixture.approval_request);
+    EvaluationSchema.parse(fixture.evaluation);
+    EventSchema.parse(fixture.event);
+    TraceSchema.parse(fixture.trace);
+    NodeEffectSchema.parse(fixture.node_effect);
+    ModelRequestSchema.parse(fixture.model_request);
+    ModelResponseSchema.parse(fixture.model_response);
+    OrgChangeProposalSchema.parse(fixture.org_change_proposal);
+    WorldModelSnapshotSchema.parse(fixture.world_model_snapshot);
+  });
+
+  it("validates canonical IDs and UTC timestamps", () => {
+    const generatedId = newId("run");
+    const generatedTimestamp = utcNow();
+
+    expect(generatedId.startsWith("run_")).toBe(true);
+    expect(validateId(generatedId)).toBe(generatedId);
+    expect(generatedTimestamp.endsWith("Z")).toBe(true);
+    expect(validateUtcTimestamp(generatedTimestamp)).toBe(generatedTimestamp);
+
+    expect(() => newId("Run")).toThrow();
+    expect(() => validateId("run_not-a-uuid")).toThrow();
+    expect(() => validateUtcTimestamp("2026-05-27T15:20:00")).toThrow();
+    expect(() => validateUtcTimestamp("2026-05-27 15:20:00+00:00")).toThrow();
+  });
+
+  it("rejects invalid fixture mutations", () => {
+    const fixture = loadFixture();
+
+    expect(() =>
+      WorkspaceSchema.parse({
+        ...(fixture.workspace as Record<string, unknown>),
+        id: "workspace-not-canonical",
+      }),
+    ).toThrow();
+
+    expect(() =>
+      CapabilitySchema.parse({
+        ...(fixture.capability as Record<string, unknown>),
+        input_schema: {},
+      }),
+    ).toThrow();
+
+    expect(() =>
+      PolicyDecisionSchema.parse({
+        ...(fixture.policy_decision as Record<string, unknown>),
+        outcome: "approve",
+      }),
+    ).toThrow();
+  });
+
+  it("keeps policy outcomes and capability schema names canonical", () => {
+    expect(PolicyOutcomeSchema.options).toEqual(["allow", "block", "require_approval", "log_only"]);
+
+    const defs = canonicalSchemaBundle().$defs as Record<
+      string,
+      { properties: Record<string, unknown> }
+    >;
+    const capabilityProperties = defs.Capability?.properties ?? {};
+
+    expect(capabilityProperties).toHaveProperty("canonical_input_schema");
+    expect(capabilityProperties).toHaveProperty("canonical_output_schema");
+    expect(capabilityProperties).not.toHaveProperty("input_schema");
+    expect(capabilityProperties).not.toHaveProperty("output_schema");
+  });
+
+  it("writes the canonical schema artifact from TypeScript", () => {
+    const artifact = JSON.parse(readFileSync(schemaPath, "utf8"));
+
+    expect(artifact).toEqual(canonicalSchemaBundle());
+  });
+});

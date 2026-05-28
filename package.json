@@ -1,0 +1,38 @@
+{
+  "name": "openmao",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Open-source organizational intelligence and control layer for AI-native organizations.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "format": "biome format --write package.json tsconfig.json biome.json ts scripts",
+    "lint": "biome check package.json tsconfig.json biome.json ts scripts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "hygiene:public": "tsx scripts/check-public-hygiene.ts",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run hygiene:public",
+    "schema:generate": "tsx scripts/generate-canonical-schema.ts",
+    "cli": "tsx ts/src/cli.ts",
+    "api": "tsx ts/src/api/server.ts",
+    "console": "tsx ts/src/api/server.ts",
+    "demo": "tsx ts/src/cli.ts demo",
+    "demo-approve": "tsx ts/src/cli.ts demo-approve"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.19.19",
+    "tsx": "^4.22.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.7"
+  }
+}

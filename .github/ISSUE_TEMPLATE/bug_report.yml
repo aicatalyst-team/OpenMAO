@@ -1,0 +1,98 @@
+name: Bug report
+description: Report reproducible incorrect behavior in OpenMAO
+title: "[bug] "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Search existing issues first and include sanitized evidence only.
+        Do not include secrets, private URLs, personal data, or closed-source project material.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I checked the relevant public docs or source comments.
+          required: true
+        - label: This is reproducible behavior, not a usage question.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Pick the closest affected area.
+      options:
+        - Canonical contracts
+        - Persistence, events, or checkpoints
+        - Org, governance, or capabilities
+        - Spine, agents, or demo flow
+        - Memory, API, CLI, or console
+        - Documentation or repo metadata
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Provide the smallest steps, commands, or code needed to reproduce the issue.
+      placeholder: |
+        1. Run ...
+        2. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include OS, Node.js version, install method, and OpenMAO commit or version.
+      placeholder: |
+        OS:
+        Node.js:
+        Install method:
+        OpenMAO commit/version:
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or trace
+      description: Paste sanitized logs, traces, or command output.
+      render: shell
+    validations:
+      required: false
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - P0 release blocker
+        - P1 serious bug
+        - P2 meaningful bug
+        - P3 cleanup or minor issue
+    validations:
+      required: true

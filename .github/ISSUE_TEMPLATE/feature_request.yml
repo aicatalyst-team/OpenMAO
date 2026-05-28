@@ -1,0 +1,88 @@
+name: Feature request
+description: Propose a scoped OpenMAO feature or capability
+title: "[feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please keep proposals focused on the smallest useful behavior. Roadmap changes require maintainer approval.
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I checked whether this fits the current roadmap and architecture.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Pick the closest affected area.
+      options:
+        - Canonical contracts
+        - Persistence, events, or checkpoints
+        - Org, governance, or capabilities
+        - Spine, agents, or demo flow
+        - Memory, API, CLI, or console
+        - Documentation or repo metadata
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Who needs this, and what workflow does it unlock?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: Describe the smallest useful version of the feature.
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Roadmap fit
+      options:
+        - Fits current roadmap
+        - Needs roadmap discussion
+        - Unsure
+    validations:
+      required: true
+  - type: dropdown
+    id: contract-impact
+    attributes:
+      label: Contract impact
+      description: Does this change canonical models, events, policies, approvals, persistence, API, CLI, or console behavior?
+      options:
+        - No known contract impact
+        - May change canonical models
+        - May change events or persistence
+        - May change policy or approval behavior
+        - May change API, CLI, or console behavior
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else did you consider?
+    validations:
+      required: false
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Contribution interest
+      options:
+        - I can submit a pull request
+        - I can help test or review
+        - I am only proposing the idea
+    validations:
+      required: true
