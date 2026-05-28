@@ -3,7 +3,7 @@
 This document maps the first-release acceptance surface to code and test evidence.
 It does not replace maintainer release approval.
 
-**Status:** release-candidate evidence verified; maintainer acceptance pending
+**Status:** `v0.1.0-rc.1` release-candidate evidence verified; maintainer acceptance pending
 **Last updated:** 2026-05-29
 **Runtime:** TypeScript on Node.js 22 LTS
 

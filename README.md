@@ -116,6 +116,7 @@ npm run cli -- events [run_id]
 - [docs/VOCABULARY.md](docs/VOCABULARY.md) - terms used across OpenMAO.
 - [docs/DEPLOYMENT_MODES.md](docs/DEPLOYMENT_MODES.md) - local, managed, and enterprise shapes.
 - [docs/examples/acme_learning_lab.md](docs/examples/acme_learning_lab.md) - default demo walkthrough.
+- [CHANGELOG.md](CHANGELOG.md) - public release history.
 - [CONTRIBUTING.md](CONTRIBUTING.md) - contributor workflow.
 - [SECURITY.md](SECURITY.md) - security reporting and expectations.
 - [GOVERNANCE.md](GOVERNANCE.md) - project governance.

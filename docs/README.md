@@ -9,6 +9,7 @@ This directory contains product, architecture, release, and contributor-facing d
 | Public entry point | `README.md` | GitHub-facing project overview and navigation. |
 | Architecture | `docs/ARCHITECTURE.md` | Current architecture, invariants, and module ownership. |
 | Roadmap | `docs/ROADMAP.md` | Post-release direction and non-goals. |
+| Changelog | `CHANGELOG.md` | Public release history. |
 | Contribution guide | `CONTRIBUTING.md` | Contributor workflow and expectations. |
 | Security policy | `SECURITY.md` | Vulnerability reporting and secret hygiene. |
 | Governance | `GOVERNANCE.md` | Human, agent, and auditor authority. |
