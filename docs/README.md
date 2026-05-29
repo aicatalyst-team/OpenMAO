@@ -7,6 +7,7 @@ OpenMAO as the organizational substrate for AI-native work.
 
 | Type | Location | Purpose |
 | --- | --- | --- |
+| North star | `NORTH_STAR.md` | Mission, vision, moat, autonomy dial, and drift test. |
 | Public entry point | `README.md` | GitHub-facing project overview and navigation. |
 | Architecture | `docs/ARCHITECTURE.md` | Current architecture, invariants, and module ownership. |
 | Roadmap | `docs/ROADMAP.md` | Post-release direction and non-goals. |

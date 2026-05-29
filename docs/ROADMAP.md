@@ -1,39 +1,43 @@
 # OpenMAO Roadmap
 
+This roadmap is the staged path described by [NORTH_STAR.md](../NORTH_STAR.md): from the adoptable
+wedge to the full flywheel and the autonomy dial.
+
 OpenMAO starts with a deterministic local release that proves the organizational substrate:
 accountable work, governed handoff, approval suspension/resume, memory promotion, audit events,
-traces, and a rebuildable world model.
+traces, and a rebuildable world model. The roadmap keeps that substrate stable while turning the
+flywheel and widening what the organization can safely do on its own.
 
-The roadmap keeps that substrate stable while expanding the workers, tools, and execution runtimes
-that can operate on top of it.
+> **The wedge is enforced capability governance. The destination is a self-correcting organization.**
+> Governance is the substrate that makes the destination safe; it is not the product's identity.
+> The failure mode to avoid is mistaking the wedge for the destination.
 
-The near-term wedge is enforced capability governance: route risky agent actions through OpenMAO so
-policy, approval, idempotency, and audit happen before side effects execute.
+## How This Roadmap Is Organized
 
-## Long-Term Mission
+Phases map to two ideas from the charter:
 
-OpenMAO's mission is to become the organizational substrate for AI-native companies: the durable
-place where AI work is owned, governed, remembered, audited, and improved.
+- **The autonomy dial** (`Organization.autonomy_level`): `advisory` -> `supervised` -> `bounded`
+  -> future `board-governed`. Autonomy widens only on audited evidence of safe behavior.
+- **The flywheel:** governance -> institutional memory -> self-correction -> self-learning ->
+  audited track record -> widened autonomy.
 
-The long-term vision has four pillars:
+Each phase must keep the flywheel whole. A stage shipped in isolation that never feeds the loop is
+drift, even if it works.
 
-1. **Enforced action governance** — risky agent actions route through OpenMAO-managed capability
-   providers or credential brokers so policy, approval, idempotency, and audit happen before side
-   effects execute.
-2. **Governed tool access** — business tools, MCP servers, APIs, databases, browsers, shells, file
-   systems, and SaaS products are exposed to agents through scoped tool contracts instead of raw,
-   ambient access.
-3. **Organizational memory** — private working knowledge, artifacts, decisions, and recurring
-   lessons can be promoted into trusted collective memory through evidence and approval instead of
-   silently drifting into shared truth.
-4. **Governed self-learning** — OpenMAO can detect repeated blockers, missing capabilities, weak
-   handoffs, stale memory, unclear roles, policy gaps, and unreliable workflows, then propose
-   improvements for human review before they become active.
+## Sequencing Principle
 
-The destination is not autonomous chaos. It is an accountable organization that can remember,
-explain, improve, and remain under human-governed authority as more work moves to agents.
+The wedge funds the runway; the loop is the destination. Land where OpenMAO is immediately useful:
+enforced governance, audit, and accountable work for organizations that cannot or will not run on a
+closed cloud. Build visibly toward the self-correcting organization so each release is demonstrably
+closer to "the organization that gets better and more autonomous over time," not just a more
+polished control plane.
 
-## Current Release
+## Phase 0: Substrate Skeleton
+
+**Current release. Autonomy:** `supervised`.
+
+The frame of the flywheel exists; it does not yet turn. Memory promotion is manual, and
+self-correction and self-learning are seams only.
 
 The current release candidate provides:
 
@@ -46,13 +50,16 @@ The current release candidate provides:
 - API, CLI, and minimal operator console;
 - public hygiene checks for secrets and internal process leaks.
 
-See [docs/release/v0_acceptance_evidence.md](release/v0_acceptance_evidence.md) for the current
-release evidence.
+See [docs/release/v0_acceptance_evidence.md](release/v0_acceptance_evidence.md) for current release
+evidence.
 
-## v1 Target: Enforced Capability Governance on the Organizational Substrate
+## Phase 1: Enforced Capability Governance
 
-v1 should prove that real work can live in OpenMAO while risky external actions are enforced through
-OpenMAO before execution.
+**The wedge. Autonomy:** `supervised` -> `bounded`.
+
+This phase makes governance real: enforced, not cooperative, so the organization can be trusted to
+act. It is the safety foundation every later phase rests on and the first release where OpenMAO is
+useful with real agents, tools, and workflows. It is the on-ramp, not the destination.
 
 The v1 promise:
 
@@ -60,9 +67,8 @@ The v1 promise:
 > actions before execution, resume safely after approval, review the outcome, and inspect the
 > resulting events, traces, memory, and world model.
 
-v1 is not a hosted enterprise platform yet. It is the first release where OpenMAO becomes useful with
-real agents, tools, or workflows by making at least one side-effecting capability enforceable rather
-than merely cooperative.
+v1 is not a hosted enterprise platform. It is the first release that makes at least one
+side-effecting capability enforceable rather than merely cooperative.
 
 ### v1 User Journey
 
@@ -81,124 +87,144 @@ than merely cooperative.
 
 ### v1 Required Work
 
-#### 1. Work Substrate
+**1. Work substrate.** Ship the public work-intake and assignment path: create/import work, assign
+owner and reviewer, produce bounded work envelopes, track lifecycle state, and close or review work
+after worker outcomes return.
 
-Ship the public work-intake and assignment path: create/import work, assign owner and reviewer,
-produce bounded work envelopes, track lifecycle state, and close or review work after worker
-outcomes return.
+**2. SDK mode.** Ship a TypeScript client for governed workers covering worker identity, work
+envelopes, authorization checks, event recording, approval requests, artifact/outcome submission,
+and memory promotion proposals.
 
-#### 2. SDK Mode
-
-Ship a TypeScript client for governed workers. The SDK should cover worker identity, work envelopes,
-authorization checks, event recording, approval requests, artifact/outcome submission, and memory
-promotion proposals.
-
-#### 3. Gateway Mode
-
-Ship one enforced side-effecting capability path. The first provider should be narrow and
-developer-visible, such as a GitHub issue/comment/pull-request action. Credentials must be handled
-by provider code and never exposed to workers, events, traces, or capability payloads. Policy and
-approval must run before execution, and approval resume must execute at most once.
+**3. Gateway mode.** Ship one enforced side-effecting capability path. The first provider should be
+narrow and developer-visible, such as a GitHub issue/comment/pull-request action. Credentials must
+be handled by provider code and never exposed to workers, events, traces, or capability payloads.
+Policy and approval must run before execution, and approval resume must execute at most once.
 
 In OpenMAO terms, tools are concrete things agents want to use: GitHub, email, Slack, a database, a
-browser, a shell, an MCP server, or an internal API. Capabilities are the governed OpenMAO
-declarations that expose those tools safely: named action, schema, provider, risk, credential handle,
-policy, approval behavior, and audit payload.
+browser, a shell, an MCP server, or an internal API. Capabilities are the governed declarations that
+expose those tools safely: named action, schema, provider, risk, credential handle, policy, approval
+behavior, and audit payload.
 
-#### 4. Ingestion Mode
+**4. Ingestion mode.** Ship an event/trace/outcome ingestion path for external runtimes that already
+execute work elsewhere. Ingested records must be idempotent, authenticated, workspace-scoped, and
+projected into the world model only through approved rules.
 
-Ship an event/trace/outcome ingestion path for external runtimes that already execute work
-elsewhere. Ingested records must be idempotent, authenticated, workspace-scoped, and projected into
-the world model only through approved rules.
+**5. Reference external worker.** Ship a small example worker outside the local spine that
+demonstrates the contract boundary: the worker executes bounded work, while OpenMAO owns authority,
+policy, approval state, memory, events, traces, and world-model truth.
 
-#### 5. Reference External Worker
+If the reference worker uses a known framework such as LangGraph, CrewAI, OpenAI Agents SDK, or a
+similar runtime, frame it as one interchangeable worker under OpenMAO authority. The adapter must
+not turn that framework into OpenMAO's spine, source of truth, approval model, memory model, or
+category positioning.
 
-Ship a small example worker outside the local spine. It should demonstrate the contract boundary:
-the worker executes bounded work, while OpenMAO owns authority, policy, approval state, memory,
-events, traces, and world-model truth.
-
-#### 6. Operator Review Loop
-
-Improve the console enough for the v1 story: runs, pending approvals, capability calls, events,
-traces, artifacts, memory proposals, and world-model state should be easy to inspect during the
-external-worker demo.
+**6. Operator review loop.** Improve the console enough for the v1 story: runs, pending approvals,
+capability calls, events, traces, artifacts, memory proposals, and world-model state should be easy
+to inspect during the external-worker demo.
 
 ### v1 Acceptance Criteria
 
 - A clean clone can run the local v0 demo without external credentials.
 - A developer can create/import a work item, assign ownership, and hand bounded work to an external worker.
-- With configured test credentials or a mock remote provider, a developer can run the v1 external
-  worker demo end to end.
+- With configured test credentials or a mock remote provider, a developer can run the v1 external worker demo end to end.
 - At least one external worker integrates without becoming the source of OpenMAO truth.
-- At least one side-effecting capability is enforceable through an OpenMAO-managed provider or
-  credential broker.
+- Replacing the reference worker runtime would not change OpenMAO's work, authority, approval, memory, event, or world-model contracts.
+- At least one side-effecting capability is enforceable through an OpenMAO-managed provider or credential broker.
 - The external worker cannot execute that side effect with raw credentials in the default v1 demo path.
 - Approval resume works after process restart and executes the approved action at most once.
-- SDK, gateway, and ingestion writes require workspace identity, actor/source identity, and
-  idempotency keys.
+- SDK, gateway, and ingestion writes require workspace identity, actor/source identity, and idempotency keys.
 - Raw secrets never appear in events, traces, capability-call payloads, artifacts, or logs.
 - The world model reflects external-worker activity through rebuildable projection rules.
-- The operator can inspect what happened, who/what requested it, which policy applied, who approved
-  it, how the work state changed, and what changed afterward.
+- The operator can inspect what happened, who/what requested it, which policy applied, who approved it, how the work state changed, and what changed afterward.
 
 ### v1 Non-Goals
 
-- Hosted SaaS control plane.
-- Multi-tenant enterprise authentication.
-- Full marketplace of providers.
-- Full compatibility adapters for every agent framework.
-- Execution-framework internal checkpointing/retry semantics.
-- Broad credential brokering for every external system.
-- Autonomous self-improvement.
-- Broad sandboxed browser/shell/file execution.
+v1 does not ship a hosted SaaS control plane, multi-tenant enterprise authentication, a full
+provider marketplace, compatibility adapters for every agent framework, execution-framework
+internal checkpointing/retry semantics, broad credential brokering for every external system,
+unreviewed autonomous self-improvement, or broad sandboxed browser/shell/file execution.
 
-### Governed Worker Adapter Contract
+## Phase 2: Institutional Memory That Compounds
 
-Define the first public adapter contract for external workers. The adapter must let external systems
-execute bounded work while OpenMAO keeps ownership of authority, policy, approvals, memory, events,
-traces, and world-model state.
+**Autonomy:** `bounded`.
 
-### Enforced Capability Providers
+The flywheel's memory stage deepens, and the compounding moat begins to accrue. Memory stops being
+storage and becomes the organization's growing institutional asset.
 
-Add the first non-mock capability provider. The provider contract must include provider identity,
-credential handles, scopes, audit payloads, failure behavior, and approval requirements without
-exposing raw credentials to agents. For approval-required actions, the provider must not execute
-until OpenMAO records approval.
+- evidence-backed organizational memory search and review;
+- transactive memory, meaning who knows or owns what, as a first-class plane;
+- corroboration-based ratification of promoted knowledge, with human review still required for high-impact items;
+- memory decay, contradiction detection, and stale-memory review;
+- the world model graduates from an inspection surface to a decision input for planning, routing,
+  and capability-gap detection while remaining a rebuildable projection.
 
-### Stronger Operator Experience
+Exit signal: the organization visibly accumulates and reuses ratified knowledge, and operators can
+see the asset growing across runs and teams.
 
-Expand the operator console from inspection and approval into a clearer working surface for runs,
-approvals, world model state, and event/trace inspection. The console must remain a client over the
-service layer.
+## Phase 3: The Self-Correction Loop
 
-### Public Templates
+**The frontier. Autonomy:** `bounded` and widening.
 
-Add organization templates, role templates, capability packs, and policy packs after the core
-contracts are stable enough for reuse.
+This is the differentiator and the genuinely hard research frontier. `OrgChangeProposal` moves from
+a dormant seam to an active, ratified loop. Self-correction is hard: build it carefully, keep humans
+ratifying, and never auto-apply.
 
-## Later Directions
+The loop:
 
-- Hosted deployment mode.
-- Managed Postgres and object storage backends.
-- Vector retrieval over memory and artifacts.
-- Real model provider routing.
-- Tool registry and scoped tool grants for MCP, HTTP APIs, SaaS tools, and internal systems.
-- Sandboxed browser, shell, file, and API workers.
-- Multi-user authentication and permissions.
-- Evidence-backed organizational memory search and review.
-- Memory decay, contradiction detection, and stale-memory review.
-- Role and SOP versioning.
-- Bounded review/deliberation nodes.
-- Corroboration-based memory ratification.
-- Self-improvement proposals for workflows, policies, roles, memory, tools, capabilities, and organization structure.
-- Enterprise deployment patterns for regulated environments.
+1. OpenMAO detects repeated blockers, missing capabilities, weak handoffs, stale memory, unclear roles, policy gaps, and unreliable workflows.
+2. It diagnoses likely causes from events, traces, outcomes, and the world model.
+3. It proposes concrete changes: new or revised roles, policies, SOPs, capabilities, or workflows.
+4. A human or governance body ratifies or rejects the proposal.
+5. OpenMAO versions the configuration and records an audited change event.
+
+Hard constraints:
+
+- no org change is applied without explicit human authorization and an audited event;
+- high-impact changes always require human review;
+- every proposal and decision is traceable and reversible;
+- rejected proposals remain useful as organizational memory rather than disappearing.
+
+This is the stage where outcomes start improving the organization's own structure. The flywheel
+turns.
+
+## Phase 4: Earned Autonomy
+
+**Board-governed horizon. Autonomy:** future `board-governed`.
+
+The north-star horizon depends on solving self-correction and on an accumulated, audited track
+record of safe behavior. It is not a near-term deliverable; it is the direction the roadmap serves.
+
+- Autonomy widens on audited evidence toward a future `board-governed` mode, where agents run
+  operations and humans govern at the policy/strategic level and intervene by exception.
+- The trust track record, built from audit and world-model history, becomes the evidence base that
+  unlocks each widening and the organization's deepest non-transferable asset.
+- Every widening remains reversible, and more autonomy raises, rather than lowers, the bar on
+  enforcement, reversibility, and audit integrity.
+
+## Cross-Cutting Enablers
+
+Infrastructure lands across phases as each phase needs it. These support the product; they are not
+the product.
+
+- managed Postgres and object-storage backends;
+- hosted and self-hostable deployment modes, with sovereign/self-hosted operation remaining first-class;
+- a durable-execution substrate for the spine as concurrency and long-suspended approvals outgrow the local SQLite engine;
+- tool registry and scoped tool grants for MCP, HTTP APIs, SaaS tools, and internal systems;
+- real model-provider routing;
+- sandboxed browser, shell, file, and API workers;
+- multi-user authentication and permissions;
+- organization, role, capability, and policy templates or packs once core contracts are stable enough to reuse;
+- enterprise deployment patterns for regulated environments.
 
 ## Non-Goals
 
 OpenMAO should not become:
 
-- a replacement for every agent framework;
-- a general-purpose project-management app;
+- a governance, policy, or audit control plane as its product identity;
+- another agent-orchestration framework competing on the inner loop;
+- a per-framework plugin, or a product fused to any single agent framework or model;
+- a replacement for every agent framework, or a general-purpose project-management app;
 - a tool that lets external runtimes own OpenMAO truth;
 - a system that silently mutates collective memory or authority boundaries;
+- a system that grants autonomy it has not earned, or that auto-applies org changes without human authorization;
 - a default path for live external side effects without explicit approval and auditability.

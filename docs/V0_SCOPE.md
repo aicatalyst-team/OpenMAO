@@ -74,9 +74,10 @@ It is release-specific; for current architecture and future direction, see
 
 ## Positioning
 
-The first release is positioned as a governance-first, audit-first local organizational substrate.
-It proves that AI work can live in OpenMAO with ownership, durable approval, governed memory, and an
-auditable history, even while execution remains deterministic and local.
+The first release is the local, governance-first proof step toward the north star in
+[NORTH_STAR.md](../NORTH_STAR.md): organizations that run themselves, accountably. It proves that AI
+work can live in OpenMAO with ownership, durable approval, governed memory, and an auditable
+history, even while execution remains deterministic and local.
 
 The first release is not yet useful as a live external-worker substrate. It establishes the work,
 policy, approval, memory, event, and world-model semantics that future workers and frameworks will
@@ -90,7 +91,7 @@ The long-term tool model is also deferred. The first release has one mock capabi
 not yet provide a real tool registry, MCP execution, SaaS connectors, browser/shell/file tools, or
 credential-backed providers.
 
-It is not positioned as:
+It is not positioned yet as:
 
 - a replacement for external agent/orchestration frameworks at runtime feature parity;
 - a sandbox-execution environment for AI agents;

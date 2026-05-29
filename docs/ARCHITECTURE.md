@@ -3,6 +3,10 @@
 OpenMAO is the organizational substrate for AI-native work. It is where work items, ownership,
 authority, approvals, memory consequences, event history, and the world model live.
 
+The project direction is defined in [NORTH_STAR.md](../NORTH_STAR.md): organizations that run
+themselves, accountably. This architecture is the safety and memory substrate for that direction,
+not just a governance control plane.
+
 Agents, tools, workflows, and external runtimes may execute bounded tasks, but OpenMAO remains the
 system of record for the work and its organizational consequences.
 
@@ -28,6 +32,9 @@ OpenMAO is designed to support four long-term organizational capabilities:
 
 OpenMAO should help an AI-native organization remember what happened, understand what is true,
 improve how it works, and stay accountable to human authority.
+
+Governance makes that path safe; institutional memory, self-correction, and earned autonomy are the
+compounding direction.
 
 ## Core Invariants
 
@@ -117,6 +124,22 @@ The word "run" can appear on both sides of this boundary. OpenMAO owns the organ
 work state: what is assigned, blocked, approved, reviewed, or complete. Execution frameworks may own
 their internal run state: retry counts, model steps, tool-loop checkpoints, or provider-specific
 execution graphs.
+
+### Framework Neutrality
+
+External frameworks are interchangeable workers under OpenMAO authority. A LangGraph, CrewAI,
+OpenAI Agents SDK, Hermes, script, cron job, or human-operated worker may execute bounded work, but
+none of them defines OpenMAO's canonical contracts, lifecycle, approval model, memory model, audit
+events, or world model.
+
+Reference adapters must prove the boundary without narrowing the product category. The adapter can
+translate an OpenMAO work envelope into the worker runtime's native shape and translate the outcome
+back into OpenMAO contracts. It must not make the external runtime OpenMAO's spine, checkpointer,
+policy engine, credential holder, memory authority, or source of organizational truth.
+
+The portability test is simple: if a team replaces one execution runtime with another, OpenMAO
+should still preserve the same work history, authority decisions, approvals, capability records,
+memory consequences, and world-model projection.
 
 ## Control Spine
 
@@ -212,4 +235,4 @@ artifacts, and memory proposals through OpenMAO services.
 
 Do not clone, vendor, fork, embed, or copy external framework code. New external dependencies require
 maintainer approval and tests proving they preserve OpenMAO authority, policy, approval, memory,
-event, and world-model invariants.
+event, world-model, and framework-neutrality invariants.

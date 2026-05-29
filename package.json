@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Open-source organizational substrate for accountable AI work, starting with enforced approvals and audit for agent actions.",
+  "description": "Open-source substrate for accountable, self-correcting AI organizations.",
   "license": "Apache-2.0",
   "engines": {
     "node": ">=22"

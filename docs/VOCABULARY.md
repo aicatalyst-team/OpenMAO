@@ -11,6 +11,8 @@ to the current contract model names. If a concept is not listed here, defer to
 | --- | --- |
 | Organizational substrate | The durable place where AI work lives: work items, owners, reviewers, lifecycle, policy, approvals, memory consequences, events, and world-model state. |
 | Execution layer | The agent framework, worker, tool loop, model provider, or workflow engine that executes a bounded task. |
+| Reference worker | An example external worker used to prove OpenMAO's integration boundary. It is interchangeable and must not become OpenMAO's spine or source of truth. |
+| Framework adapter | A translation layer between OpenMAO work envelopes and an external runtime's native task/run shape. The adapter executes no OpenMAO truth directly. |
 | Tool | A concrete external system an agent wants to use: MCP server, API, database, browser, shell, file surface, SaaS product, or internal service. |
 | Capability | The OpenMAO-governed declaration that exposes a tool action with schema, provider, risk, credential handle, policy, approval, and audit semantics. |
 | Enforced capability | A side-effecting action that can only execute through an OpenMAO-managed provider or credential broker, after policy and approval checks. |
@@ -18,6 +20,8 @@ to the current contract model names. If a concept is not listed here, defer to
 | System of record for AI work | OpenMAO's role: preserving the accountable work history and organizational consequences across runs, agents, tools, and frameworks. |
 | Organizational memory | The governed memory plane where individual observations, artifacts, and decisions can become trusted collective knowledge through promotion. |
 | Governed self-learning | A future loop where OpenMAO proposes improvements to roles, policies, workflows, memory, and capabilities based on observed evidence, subject to review. |
+| Autonomy dial | The gradual widening of what the organization may do without per-action human approval, based on audited evidence of safe operation. |
+| Self-correcting organization | The long-term target: an organization that uses governed memory, audit, and world-model evidence to propose and ratify improvements to its own behavior and structure. |
 
 ## Canonical Types
 
@@ -75,6 +79,10 @@ OpenMAO owns organizational state, while execution frameworks own their internal
 
 This keeps OpenMAO from becoming a replacement for every agent framework while still making it the
 system of record for AI work.
+
+Runtime-specific adapters should pass the replacement test: if a team swaps one execution runtime
+for another, OpenMAO's work items, authority decisions, approvals, memory consequences, events, and
+world model still remain intact.
 
 ### Cooperative Governance → Enforced Capability Access
 

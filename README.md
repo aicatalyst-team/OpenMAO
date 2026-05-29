@@ -1,107 +1,129 @@
 # OpenMAO
 
-OpenMAO is the open-source organizational substrate for AI-native companies.
+<p align="center">
+  <img src="docs/assets/openmao-logo.png" alt="OpenMAO logo" width="360">
+</p>
 
-It helps teams answer the questions that appear once agents and tools start doing real work:
+**Build organizations, not just agents.**
 
-- Who owns this task?
-- What is this agent allowed to do?
-- Which actions need human approval?
-- What should become trusted organizational memory?
-- What happened, in what order, and why?
+OpenMAO is an open-source substrate for AI-native organizations that run themselves, accountably.
+You define the mission, roles, goals, and guardrails. Agents do the work. The organization remembers
+what it learns, corrects itself when it is wrong, and earns more autonomy as it proves it can be
+trusted. The human role does not disappear; it rises from operator, to reviewer, to board.
 
-OpenMAO does not try to replace every agent framework or business tool. Bring your own agents,
-workflows, APIs, and MCP tools; OpenMAO gives the work a place to live with shared ownership,
-policies, approvals, memory governance, audit trails, and a live world model.
+Most autonomous-company demos hand a swarm of agents the keys and hope for the best. OpenMAO takes
+the opposite bet:
 
-> Bring your agents and tools. OpenMAO gives the work a place to live.
-> Start with enforced approvals and audit for agent actions.
-> Grow into trusted organizational memory and governed self-learning.
+> **Autonomy is earned, not assumed.**
 
----
+Every action an agent takes is owned, governed, and auditable, and the system widens what it is
+allowed to do only on a track record it can prove. Accountability is not the brake on autonomy; it
+is the road to it.
 
-## What OpenMAO Does
+OpenMAO is open source and self-hostable. The organization you build, and everything it learns,
+belongs to you, not to a vendor and not to a cloud.
 
-OpenMAO is the system of record for AI work:
+## The Flywheel
 
-- **Roles and ownership:** define who is responsible for work, review, and capabilities.
-- **Work lifecycle:** track accountable work from intake through assignment, blocking, review, and completion.
-- **Policy and authority:** decide what agents or workers can read, write, call, or change.
-- **Approval gates:** pause high-stakes actions until the right human approves or rejects them.
-- **Tool governance:** expose business tools, MCP servers, APIs, browsers, shells, files, and SaaS
-  products through scoped contracts instead of raw access.
-- **Capability enforcement:** route risky side effects through governed providers instead of handing raw credentials to agents.
-- **Memory promotion:** keep scratchpad knowledge separate from trusted shared memory.
-- **Learning loops:** turn repeated blockers, stale memory, policy gaps, and weak handoffs into reviewed improvement proposals.
-- **Events and traces:** record state changes and execution steps so work can be audited.
-- **World model:** maintain a rebuildable view of goals, runs, blockers, approvals, memory, and recent activity.
+OpenMAO is not a pile of features. It is one loop, and the loop is the product:
 
-The key rule is simple: external frameworks may execute bounded tasks, but the work item, owner,
-lifecycle, approvals, memory consequences, event history, and world model live in OpenMAO. For risky
-side effects, OpenMAO should be in the execution path: the agent cannot send, spend, deploy, write,
-or mutate through governed capabilities without policy, approval, and audit.
+```text
+governance -> institutional memory -> self-correction -> self-learning
+    ^                                                        |
+    +--------- wider autonomy <- audited track record <------+
+```
 
-## Current Status
+- **Governance:** makes every action safe and bounded, and for real side effects, non-bypassable.
+- **Institutional memory:** turns what one agent learns into trusted, shared organizational knowledge.
+- **Self-correction:** turns outcomes into better decisions.
+- **Self-learning:** lets the organization improve its own roles, policies, workflows, and capabilities.
+- **Audited track record:** earns the next notch of autonomy.
 
-OpenMAO is a local TypeScript release candidate. It proves the core semantics with a deterministic
-demo that requires no external API keys, no real LLM calls, and no hosted services.
+Each turn feeds the next. Anyone can ship one stage; almost no one will build the whole loop. That
+loop is the hard, valuable thing, and the reason OpenMAO exists.
 
-The demo creates a small organization, runs a two-agent workflow, pauses for human approval,
-resumes from durable state, promotes memory only after approval, and leaves an inspectable event
-and trace history.
+## Where It Is Today
+
+OpenMAO is an early, local TypeScript release candidate. It proves the core semantics with a
+deterministic demo that needs no API keys, no real LLM calls, and no hosted services: it spins up a
+small organization, runs a two-agent workflow, pauses for human approval, resumes from durable
+state, promotes memory only after approval, and leaves a fully inspectable event and trace history.
+
+The governance, memory, and audit foundations are real and tested. The hard part, genuine
+self-correction where an organization diagnoses failures and revises its own structure, is the open
+frontier. It is specified in [NORTH_STAR.md](NORTH_STAR.md), staged in the
+[roadmap](docs/ROADMAP.md), seamed into the architecture, and not yet built.
 
 License: Apache-2.0.
 
 ## Quickstart
 
-Requirements:
-
-- Node.js 22+
-- npm
-- make
-
-Install and check the project:
+Requirements: Node.js 22+, npm, make.
 
 ```bash
-make install
-make check
+make install      # install dependencies
+make check        # lint, typecheck, tests, public hygiene
+make demo         # run the organization until it pauses for approval
+make demo-approve # approve and resume from durable state
 ```
 
-Run the local demo:
-
-```bash
-make demo
-make demo-approve
-```
-
-Inspect the world model:
+See what the organization currently understands about itself:
 
 ```bash
 npm run cli -- world --run run_99999999999999999999999999999999
 ```
 
-Start the local operator console:
+Open the operator console. It runs on `127.0.0.1` and prompts for the token the server prints:
 
 ```bash
 make console
 ```
 
-The console runs on `127.0.0.1` and prompts for the operator token printed by the server.
-
 ## How It Fits
 
-OpenMAO is the organizational substrate. Execution frameworks are workers on top of it.
+OpenMAO is the system of record for the organization. Your agents, frameworks, and tools are
+workers on top of it. Bring whichever you like.
 
 ```text
-OpenMAO work items, owners, policies, approvals, memory, events, world model
-  -> bounded work envelopes
-  -> agents, workers, tools, and workflows execute bounded tasks
-  -> risky capabilities route back through OpenMAO before execution
-  -> outcomes return to OpenMAO as organizational record
+OpenMAO owns: work items, owners, policies, approvals, memory, events, world model
+    |
+    +-> hands out bounded work envelopes
+    +-> agents, frameworks, and tools execute bounded tasks
+    +-> risky actions route back through OpenMAO before side effects
+    +-> outcomes return as organizational record
 ```
 
-The current execution path is deterministic and local. Future integration modes will let external
-workers participate through SDK calls, enforced capability gateways, and event/trace ingestion.
+The boundary is the point: external frameworks may execute bounded tasks, but the work item,
+authority, approvals, memory consequences, event history, and world model live in OpenMAO. For
+anything that can send, spend, deploy, write, or mutate, OpenMAO sits in the execution path: the
+agent cannot reach the side effect without passing the gate. Swap your agent framework tomorrow and
+the organization, its memory, and its audit trail remain intact.
+
+Reference adapters for frameworks such as LangGraph, CrewAI, OpenAI Agents SDK, or other runtimes
+are examples of this worker boundary, not OpenMAO's product category or source of truth.
+
+## The Autonomy Dial
+
+Autonomy is not a switch. It is a dial that rises with earned trust
+(`Organization.autonomy_level`):
+
+- **advisory:** humans do the work; OpenMAO suggests and records.
+- **supervised:** agents act; humans approve each consequential action. This is where the local release begins.
+- **bounded:** agents act within enforced limits; humans approve high-risk and out-of-bounds actions.
+- **board-governed:** future horizon where agents run operations and humans govern at the policy level.
+
+Every widening is earned on audited evidence, and every widening is reversible.
+
+## Contributing
+
+OpenMAO is building toward something hard and worth it: organizations that can be trusted to run
+themselves. The governance substrate is the on-ramp; the self-correcting organization is the
+destination.
+
+Start with [NORTH_STAR.md](NORTH_STAR.md). It is the first thing to read and it governs the
+project's direction. Then read [AGENTS.md](AGENTS.md) and [CONTRIBUTING.md](CONTRIBUTING.md) for
+how to work in the repo. The highest-leverage open work is the learning loop; the
+[roadmap](docs/ROADMAP.md) lays out the path from here to there.
 
 ## Useful Commands
 
@@ -120,22 +142,26 @@ npm run cli -- events [run_id]
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - current architecture and invariants.
-- [docs/ROADMAP.md](docs/ROADMAP.md) - where OpenMAO goes after the local release.
+- [NORTH_STAR.md](NORTH_STAR.md) - why OpenMAO exists and where it is going. Start here.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - architecture and invariants.
+- [docs/ROADMAP.md](docs/ROADMAP.md) - staged path from wedge to flywheel to autonomy dial.
 - [docs/V0_SCOPE.md](docs/V0_SCOPE.md) - what the first release ships and what is deferred.
-- [docs/VOCABULARY.md](docs/VOCABULARY.md) - terms used across OpenMAO.
+- [docs/VOCABULARY.md](docs/VOCABULARY.md) - canonical terms.
 - [docs/DEPLOYMENT_MODES.md](docs/DEPLOYMENT_MODES.md) - local, managed, and enterprise shapes.
 - [docs/examples/acme_learning_lab.md](docs/examples/acme_learning_lab.md) - default demo walkthrough.
-- [CHANGELOG.md](CHANGELOG.md) - public release history.
 - [CONTRIBUTING.md](CONTRIBUTING.md) - contributor workflow.
 - [SECURITY.md](SECURITY.md) - security reporting and expectations.
 - [GOVERNANCE.md](GOVERNANCE.md) - project governance.
+- [CHANGELOG.md](CHANGELOG.md) - public release history.
 - [LICENSE](LICENSE) - Apache-2.0 license.
 
 ## Project Boundary
 
-OpenMAO may learn from public agent and orchestration projects, and future versions may integrate
-them through governed worker/capability adapters. It does not clone, vendor, fork, embed, or copy
-external framework code.
+OpenMAO learns from public agent and orchestration projects and may integrate them through governed
+worker/capability adapters. It does not clone, vendor, fork, embed, or copy external framework code.
+
+Framework adapters must stay interchangeable: if a team replaces one worker runtime with another,
+OpenMAO should still own the work, authority, approvals, memory promotion, audit trail, and world
+model.
 
 Do not commit secrets, private data, local-only artifacts, or closed-source project material.
