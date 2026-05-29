@@ -11,6 +11,7 @@ OpenMAO as the organizational substrate for AI-native work.
 | Public entry point | `README.md` | GitHub-facing project overview and navigation. |
 | Architecture | `docs/ARCHITECTURE.md` | Current architecture, invariants, and module ownership. |
 | Roadmap | `docs/ROADMAP.md` | Post-release direction and non-goals. |
+| Positioning | `docs/POSITIONING.md` | Where OpenMAO fits in the wider ecosystem. |
 | Changelog | `CHANGELOG.md` | Public release history. |
 | Contribution guide | `CONTRIBUTING.md` | Contributor workflow and expectations. |
 | Security policy | `SECURITY.md` | Vulnerability reporting and secret hygiene. |

@@ -6,6 +6,17 @@ All notable public release changes for OpenMAO are documented here.
 
 No unreleased changes.
 
+## v0.3.1 - 2026-05-29
+
+Patch release for public documentation and clarity fixes after the v0.3.0 release.
+
+### Fixed
+
+- Added the missing `docs/POSITIONING.md` file linked from the README and docs index.
+- Clarified repeated-blocker detector semantics in code comments.
+- Clarified that `OrgChangeProposal.status = "pending"` is retained for compatibility while the
+  service creates `proposed` proposals.
+
 ## v0.3.0 - 2026-05-29
 
 Stable v1.5 institutional learning loop release.

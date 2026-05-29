@@ -108,6 +108,7 @@ export class LearningService {
     const blockedEvents = this.events
       .listForWorkspace(workspaceId)
       .filter((event) => event.kind === "work.blocked");
+    // Count distinct incidents so one blocked item plus its audit event is not "repeated."
     const blockedWorkIds = new Set([
       ...blockedWork.map((workItem) => workItem.id),
       ...blockedEvents

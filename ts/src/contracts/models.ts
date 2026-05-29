@@ -608,6 +608,7 @@ export const OrgChangeProposalSchema = z
     confidence: z.number().min(0).max(1).default(0.5),
     impact: z.enum(["low", "medium", "high"]).default("medium"),
     review_approval_id: CanonicalIdSchema.nullable().default(null),
+    // `pending` is retained for pre-v1.5/manual compatibility; services create `proposed`.
     status: z
       .enum(["draft", "pending", "proposed", "approved", "rejected", "applied"])
       .default("draft"),
