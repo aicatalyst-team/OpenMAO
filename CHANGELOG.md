@@ -2,6 +2,16 @@
 
 All notable public release changes for OpenMAO are documented here.
 
+## Unreleased
+
+### Added
+
+- v1 enforced capability governance candidate.
+- Framework-neutral reference worker demo with bounded work, approval-required side effect, outcome submission, ingestion, review, and world-model projection.
+- External-worker capability gateway checks for worker identity, capability grants, provider availability, credential handles, approval, and at-most-once execution.
+- API, CLI, and console surfaces for the v1 worker flow, capability calls, and capability results.
+- v1 acceptance evidence at `docs/release/v1_acceptance_evidence.md`.
+
 ## v0.1.0 - 2026-05-29
 
 First accepted OpenMAO release.
