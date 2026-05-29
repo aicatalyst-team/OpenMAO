@@ -8,6 +8,7 @@ import {
 import { ApprovalService } from "../governance/index.js";
 import {
   AgentStore,
+  BoundedWorkEnvelopeStore,
   CapabilityStore,
   type Database,
   EventStore,
@@ -17,6 +18,7 @@ import {
   RoleStore,
   RunStore,
   TraceStore,
+  WorkerIdentityStore,
   WorkItemStore,
   WorkspaceStore,
 } from "../persistence/index.js";
@@ -29,6 +31,7 @@ import {
   SpineService,
   WORKSPACE_ID,
 } from "../spine/index.js";
+import { WorkService } from "../work/index.js";
 import { WorldModelService } from "../world/index.js";
 
 type ServerOptions = {
@@ -65,6 +68,8 @@ function routePattern(pathname: string): {
   runId: string | undefined;
   runResumeId: string | undefined;
   runTracesId: string | undefined;
+  workEnvelopeId: string | undefined;
+  workId: string | undefined;
   workspaceEventsId: string | undefined;
 } {
   const approvalMatch = /^\/approvals\/([^/]+)\/(?:approve|reject)$/.exec(pathname);
@@ -72,6 +77,8 @@ function routePattern(pathname: string): {
   const runResumeMatch = /^\/runs\/([^/]+)\/resume$/.exec(pathname);
   const runTracesMatch = /^\/runs\/([^/]+)\/traces$/.exec(pathname);
   const runMatch = /^\/runs\/([^/]+)$/.exec(pathname);
+  const workEnvelopeMatch = /^\/work\/([^/]+)\/envelopes$/.exec(pathname);
+  const workMatch = /^\/work\/([^/]+)(?:\/(?:assign|status))?$/.exec(pathname);
   const workspaceEventsMatch = /^\/workspaces\/([^/]+)\/events$/.exec(pathname);
   const individualMemoryMatch = /^\/memory\/individual\/([^/]+)$/.exec(pathname);
   return {
@@ -81,6 +88,8 @@ function routePattern(pathname: string): {
     runId: runMatch?.[1],
     runResumeId: runResumeMatch?.[1],
     runTracesId: runTracesMatch?.[1],
+    workEnvelopeId: workEnvelopeMatch?.[1],
+    workId: workMatch?.[1],
     workspaceEventsId: workspaceEventsMatch?.[1],
   };
 }
@@ -173,6 +182,27 @@ function requireUnambiguousWriteWorkspace(
   return true;
 }
 
+async function readJsonBody(request: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of request) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  if (chunks.length === 0) {
+    return {};
+  }
+  const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("request body must be a JSON object");
+  }
+  return parsed as Record<string, unknown>;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
 export function createServer(options: ServerOptions = {}) {
   const resolvedOptions = {
     operatorToken:
@@ -182,7 +212,7 @@ export function createServer(options: ServerOptions = {}) {
     workspaceId: options.workspaceId ?? WORKSPACE_ID,
   };
 
-  return createHttpServer((request: IncomingMessage, response: ServerResponse) => {
+  return createHttpServer(async (request: IncomingMessage, response: ServerResponse) => {
     if (!isLoopbackAddress(request.socket.remoteAddress)) {
       sendJson(response, 403, { error: "loopback_only" });
       return;
@@ -261,6 +291,36 @@ export function createServer(options: ServerOptions = {}) {
         );
         return;
       }
+      if (request.method === "GET" && url.pathname === "/workers") {
+        sendJson(
+          response,
+          200,
+          new WorkerIdentityStore(database).listForWorkspace(context.workspaceId),
+        );
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/workers") {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          201,
+          new WorkService(database).registerWorker({
+            id: typeof body.id === "string" ? body.id : null,
+            workspace_id: context.workspaceId,
+            name: String(body.name ?? ""),
+            runtime: String(body.runtime ?? ""),
+            version: typeof body.version === "string" ? body.version : null,
+            role_id: typeof body.role_id === "string" ? body.role_id : null,
+            allowed_capabilities: stringArray(body.allowed_capabilities),
+            actor: context.actor,
+            idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : null,
+          }),
+        );
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/runs") {
         ensureDefaultWorkspace(spine, database, context.workspaceId);
         sendJson(response, 200, new RunStore(database).listForWorkspace(context.workspaceId));
@@ -322,6 +382,109 @@ export function createServer(options: ServerOptions = {}) {
       if (request.method === "GET" && url.pathname === "/work") {
         ensureDefaultWorkspace(spine, database, context.workspaceId);
         sendJson(response, 200, new WorkItemStore(database).listForWorkspace(context.workspaceId));
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/work") {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          201,
+          new WorkService(database).createWork({
+            id: typeof body.id === "string" ? body.id : null,
+            workspace_id: context.workspaceId,
+            title: String(body.title ?? ""),
+            objective: String(body.objective ?? ""),
+            owner: String(body.owner ?? ""),
+            reviewer: typeof body.reviewer === "string" ? body.reviewer : null,
+            priority: (body.priority ?? "medium") as never,
+            risk_level: (body.risk_level ?? "low") as never,
+            success_criteria: stringArray(body.success_criteria),
+            actor: context.actor,
+            idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : null,
+          }),
+        );
+        return;
+      }
+      if (request.method === "GET" && approvalRoute.workId) {
+        const work = new WorkItemStore(database).get(approvalRoute.workId);
+        if (!work || work.workspace_id !== context.workspaceId) {
+          sendNotFound(response);
+          return;
+        }
+        sendJson(response, 200, work);
+        return;
+      }
+      if (request.method === "POST" && approvalRoute.workId && url.pathname.endsWith("/assign")) {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          new WorkService(database).assignWork({
+            work_item_id: approvalRoute.workId,
+            owner: String(body.owner ?? ""),
+            reviewer: typeof body.reviewer === "string" ? body.reviewer : null,
+            actor: context.actor,
+            idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : null,
+          }),
+        );
+        return;
+      }
+      if (request.method === "POST" && approvalRoute.workId && url.pathname.endsWith("/status")) {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          new WorkService(database).setStatus({
+            work_item_id: approvalRoute.workId,
+            status: String(body.status ?? "") as never,
+            reason: typeof body.reason === "string" ? body.reason : null,
+            actor: context.actor,
+            idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : null,
+          }),
+        );
+        return;
+      }
+      if (request.method === "GET" && approvalRoute.workEnvelopeId) {
+        sendJson(
+          response,
+          200,
+          new BoundedWorkEnvelopeStore(database).listForWorkItem(approvalRoute.workEnvelopeId),
+        );
+        return;
+      }
+      if (request.method === "POST" && approvalRoute.workEnvelopeId) {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const body = await readJsonBody(request);
+        const input = body.input;
+        sendJson(
+          response,
+          201,
+          new WorkService(database).createBoundedEnvelope({
+            id: typeof body.id === "string" ? body.id : null,
+            workspace_id: context.workspaceId,
+            work_item_id: approvalRoute.workEnvelopeId,
+            run_id: typeof body.run_id === "string" ? body.run_id : null,
+            worker_id: String(body.worker_id ?? ""),
+            issued_by: { actor_type: "operator", actor_id: context.actor, display_name: null },
+            allowed_capabilities: stringArray(body.allowed_capabilities),
+            input:
+              input && typeof input === "object" && !Array.isArray(input)
+                ? (input as Record<string, unknown>)
+                : {},
+            idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : null,
+          }),
+        );
         return;
       }
       if (request.method === "GET" && approvalRoute.individualMemoryAgentId) {

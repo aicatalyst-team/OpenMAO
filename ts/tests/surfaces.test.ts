@@ -98,6 +98,101 @@ describe("TypeScript operator surfaces", () => {
     expect(JSON.parse(runEventsOutput.lines[0] ?? "[]").length).toBeGreaterThan(0);
   });
 
+  it("creates work, registers a worker, and issues bounded envelopes through the CLI", async () => {
+    const initOutput = capture();
+    const workerOutput = capture();
+    const workOutput = capture();
+    const assignOutput = capture();
+    const envelopeOutput = capture();
+    const envelopesOutput = capture();
+
+    expect(await runCli(["init"], { dbPath, write: initOutput.write })).toBe(0);
+    expect(
+      await runCli(
+        [
+          "workers",
+          "register",
+          "--id",
+          "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "--name",
+          "Reference Worker",
+          "--runtime",
+          "openmao.example.worker",
+          "--capabilities",
+          "mock.research_lookup",
+        ],
+        { dbPath, write: workerOutput.write },
+      ),
+    ).toBe(0);
+    expect(
+      await runCli(
+        [
+          "work",
+          "create",
+          "--id",
+          "work_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "--title",
+          "Prepare governed update",
+          "--objective",
+          "Prepare a governed update for review.",
+          "--owner",
+          "role_33333333333333333333333333333",
+          "--reviewer",
+          "human",
+          "--criteria",
+          "bounded envelope exists,events are inspectable",
+        ],
+        { dbPath, write: workOutput.write },
+      ),
+    ).toBe(0);
+    expect(
+      await runCli(
+        [
+          "work",
+          "assign",
+          "work_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "--owner",
+          "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ],
+        { dbPath, write: assignOutput.write },
+      ),
+    ).toBe(0);
+    expect(
+      await runCli(
+        [
+          "work",
+          "envelope",
+          "work_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "--id",
+          "envelope_cccccccccccccccccccccccccccccccc",
+          "--worker",
+          "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "--capabilities",
+          "mock.research_lookup",
+          "--input",
+          '{"topic":"governed update"}',
+        ],
+        { dbPath, write: envelopeOutput.write },
+      ),
+    ).toBe(0);
+    expect(
+      await runCli(["work", "envelopes", "work_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"], {
+        dbPath,
+        write: envelopesOutput.write,
+      }),
+    ).toBe(0);
+
+    expect(JSON.parse(workerOutput.lines[0] ?? "{}").id).toBe(
+      "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    expect(JSON.parse(workOutput.lines[0] ?? "{}").status).toBe("queued");
+    expect(JSON.parse(assignOutput.lines[0] ?? "{}").status).toBe("in_progress");
+    expect(JSON.parse(envelopeOutput.lines[0] ?? "{}").worker_id).toBe(
+      "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+    expect(JSON.parse(envelopesOutput.lines[0] ?? "[]")).toHaveLength(1);
+  });
+
   it("serves demo, approvals, world, and console over HTTP", async () => {
     const server = createServer({ dbPath, operatorToken });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -229,6 +324,75 @@ describe("TypeScript operator surfaces", () => {
       expect(consoleHtml).toContain('data-view="traces"');
       expect(consoleHtml).toContain("/approvals/");
       expect(consoleHtml).not.toContain(operatorToken);
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("serves v1 work substrate operations over HTTP", async () => {
+    const server = createServer({ dbPath, operatorToken });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const jsonHeaders = { ...operatorHeaders, "content-type": "application/json" };
+    try {
+      await fetch(`${baseUrl}/runs/demo`, { method: "POST", headers: operatorHeaders });
+      const worker = (await fetch(`${baseUrl}/workers`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          id: "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          name: "Reference Worker",
+          runtime: "openmao.example.worker",
+          allowed_capabilities: ["mock.research_lookup"],
+        }),
+      }).then((response) => response.json())) as { id: string };
+      const work = (await fetch(`${baseUrl}/work`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          id: "work_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          title: "Prepare governed update",
+          objective: "Prepare a governed update for review.",
+          owner: "role_33333333333333333333333333333333",
+          reviewer: "human",
+          success_criteria: ["bounded envelope exists"],
+        }),
+      }).then((response) => response.json())) as { id: string; status: string };
+      const assigned = (await fetch(`${baseUrl}/work/${work.id}/assign`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ owner: worker.id }),
+      }).then((response) => response.json())) as { owner: string; status: string };
+      const envelope = (await fetch(`${baseUrl}/work/${work.id}/envelopes`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          id: "envelope_cccccccccccccccccccccccccccccccc",
+          worker_id: worker.id,
+          allowed_capabilities: ["mock.research_lookup"],
+          input: { topic: "governed update" },
+        }),
+      }).then((response) => response.json())) as { worker_id: string; work_item_id: string };
+      const envelopes = (await fetch(`${baseUrl}/work/${work.id}/envelopes`, {
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as unknown[];
+      const events = (await fetch(`${baseUrl}/events`, { headers: operatorHeaders }).then(
+        (response) => response.json(),
+      )) as Array<{ kind: string }>;
+
+      expect(worker.id).toBe("worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+      expect(work.status).toBe("queued");
+      expect(assigned.owner).toBe(worker.id);
+      expect(assigned.status).toBe("in_progress");
+      expect(envelope.worker_id).toBe(worker.id);
+      expect(envelope.work_item_id).toBe(work.id);
+      expect(envelopes).toHaveLength(1);
+      expect(events.map((event) => event.kind)).toEqual(
+        expect.arrayContaining(["worker.registered", "work.created", "work.assigned"]),
+      );
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

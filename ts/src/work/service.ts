@@ -5,6 +5,8 @@ import {
   type ExternalActorRef,
   newId,
   utcNow,
+  type WorkerIdentity,
+  WorkerIdentitySchema,
   type WorkItem,
   WorkItemSchema,
 } from "../contracts/index.js";
@@ -26,6 +28,18 @@ type CreateWorkInput = {
   priority?: WorkItem["priority"];
   risk_level?: WorkItem["risk_level"];
   success_criteria?: string[];
+  actor: string;
+  idempotency_key?: string | null;
+};
+
+type RegisterWorkerInput = {
+  id?: string | null;
+  workspace_id: string;
+  name: string;
+  runtime: string;
+  version?: string | null;
+  role_id?: string | null;
+  allowed_capabilities?: string[];
   actor: string;
   idempotency_key?: string | null;
 };
@@ -103,6 +117,33 @@ export class WorkService {
           refs: [saved.id],
         }),
         idempotency_key: input.idempotency_key ?? `work:${saved.id}:created`,
+      });
+      return saved;
+    });
+  }
+
+  registerWorker(input: RegisterWorkerInput): WorkerIdentity {
+    const worker = WorkerIdentitySchema.parse({
+      id: input.id ?? newId("worker"),
+      workspace_id: input.workspace_id,
+      name: input.name,
+      runtime: input.runtime,
+      version: input.version ?? null,
+      role_id: input.role_id ?? null,
+      allowed_capabilities: input.allowed_capabilities ?? [],
+    });
+
+    return this.database.transaction(() => {
+      const saved = this.workers.save(worker);
+      this.events.append({
+        workspace_id: saved.workspace_id,
+        kind: "worker.registered",
+        actor: input.actor,
+        payload: EventPayloadSchema.parse({
+          data: { worker_identity: saved },
+          refs: [saved.id],
+        }),
+        idempotency_key: input.idempotency_key ?? `worker:${saved.id}:registered`,
       });
       return saved;
     });
