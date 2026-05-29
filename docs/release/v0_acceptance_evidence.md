@@ -3,7 +3,7 @@
 This document maps the first-release acceptance surface to code and test evidence.
 It does not replace maintainer release approval.
 
-**Status:** `v0.1.0-rc.2` release-candidate evidence verified; maintainer acceptance pending
+**Status:** `v0.1.0` accepted
 **Last updated:** 2026-05-29
 **Runtime:** TypeScript on Node.js 22 LTS
 
@@ -85,4 +85,4 @@ Latest verification on 2026-05-29:
 | README includes quickstart and architecture overview. | `README.md`. |
 | No external runtime or service is required. | `README.md`, deterministic TypeScript demo tests. |
 
-Maintainer release approval is still required before public release.
+Release acceptance is recorded by the `v0.1.0` GitHub release.

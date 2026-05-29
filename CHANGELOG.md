@@ -2,6 +2,14 @@
 
 All notable public release changes for OpenMAO are documented here.
 
+## v0.1.0 - 2026-05-29
+
+First accepted OpenMAO release.
+
+This promotes `v0.1.0-rc.2` after acceptance verification. It includes the deterministic local
+runtime, canonical contracts, approval-gated execution and memory promotion, event/trace audit
+records, rebuildable world model, CLI/API/operator console surfaces, and security reporting path.
+
 ## v0.1.0-rc.2 - 2026-05-29
 
 Second public release candidate with review-blocker fixes.

@@ -1,6 +1,6 @@
 {
   "name": "openmao",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Open-source organizational substrate for accountable AI work, starting with enforced approvals and audit for agent actions.",
