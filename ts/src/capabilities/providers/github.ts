@@ -111,7 +111,12 @@ export class GitHubProvider implements CapabilityProvider {
       if (!response.ok) {
         throw new Error(`github comment creation failed with status ${response.status}`);
       }
-      const payload = (await response.json()) as { id?: unknown; html_url?: unknown };
+      let payload: { id?: unknown; html_url?: unknown };
+      try {
+        payload = (await response.json()) as { id?: unknown; html_url?: unknown };
+      } catch {
+        throw new Error("github response body could not be parsed");
+      }
       if (typeof payload.id !== "number" || typeof payload.html_url !== "string") {
         throw new Error("github response did not include a comment id and url");
       }

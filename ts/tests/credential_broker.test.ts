@@ -49,11 +49,14 @@ describe("credential broker", () => {
         OPENMAO_CRED_PRESENT: "x",
         OPENMAO_CRED_EMPTY: "",
         OPENMAO_CRED_BLANK: "   ",
+        OPENMAO_CRED_PADDED: "  padded-value  ",
       });
       expect(broker.resolve("cred_present")).toBe("x");
       expect(broker.resolve("cred_missing")).toBeNull();
       expect(broker.resolve("cred_empty")).toBeNull();
       expect(broker.resolve("cred_blank")).toBeNull();
+      // A whitespace-padded secret is trimmed, not forwarded verbatim.
+      expect(broker.resolve("cred_padded")).toBe("padded-value");
     });
 
     it("supports a custom env prefix", () => {
