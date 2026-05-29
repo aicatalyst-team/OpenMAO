@@ -3,7 +3,7 @@
 This document maps the v1 enforced-capability governance surface to code and test evidence.
 It does not replace maintainer release approval or independent review.
 
-**Status:** implementation candidate, pending independent review
+**Status:** release candidate, independent reviews passed
 **Last updated:** 2026-05-29
 **Runtime:** TypeScript on Node.js 22 LTS
 
@@ -68,10 +68,11 @@ The v1 local demo proves the enforced worker path:
 | v0 compatibility smoke | Passing |
 | v1 worker gateway smoke | Passing |
 | Public hygiene | Passing |
-| Review-blocker fixes | Passing implementation checks; pending independent re-review |
-| QA review | Pending |
-| Security review | Pending |
-| Architecture review | Pending |
-| Maintainer release approval | Pending |
+| Review-blocker fixes | Passed implementation checks |
+| QA review | Passed; tracked by GitHub issue #12 |
+| Security review | Passed; tracked by GitHub issue #13 |
+| Architecture review | Passed; tracked by GitHub issue #14 |
+| Maintainer release approval | Approved for `v0.2.0-rc.1` release candidate |
 
-Release acceptance should be recorded only after the pending review gates are complete.
+Release acceptance is recorded for the `v0.2.0-rc.1` release candidate. Stable promotion should
+remain a separate maintainer decision after public feedback or any additional release checks.
