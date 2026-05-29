@@ -14,7 +14,7 @@
   <img src="https://img.shields.io/badge/status-release%20candidate-orange" alt="Status: release candidate">
 </p>
 
-> ⚡ **Try it in ~3 minutes — no API keys, no LLM calls, no cloud.** Run `make install && make demo && make demo-approve` and watch an organization run a two-agent workflow, **pause for human approval**, resume from durable state, and **promote memory only after you approve** — with a fully inspectable event log.
+> **Try it in ~3 minutes — no API keys, no LLM calls, no cloud.** Run `make install && make demo && make demo-approve` and watch an organization run a two-agent workflow, **pause for human approval**, resume from durable state, and **promote memory only after you approve** — with a fully inspectable event log.
 
 OpenMAO is an open-source substrate for AI-native organizations that run themselves, accountably.
 You define the mission, roles, goals, and guardrails. Agents do the work. The organization remembers
