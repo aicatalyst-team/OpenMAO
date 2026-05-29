@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640" font-family="Helvetica Neue, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0A0E1A"/>
+      <stop offset="1" stop-color="#0F1629"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2DD4BF"/>
+      <stop offset="1" stop-color="#5EEAD4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- background -->
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="6" fill="url(#accent)"/>
+
+  <!-- right-side "loop" motif: the loop is the product -->
+  <g transform="translate(1015 296)" fill="none" stroke="#2DD4BF" opacity="0.22">
+    <circle r="168" stroke-width="2"/>
+    <circle r="120" stroke-width="1.5" stroke-dasharray="3 9"/>
+    <path d="M 168 0 l -16 -11 l 0 22 z" fill="#2DD4BF" stroke="none"/>
+    <path d="M -168 0 l 16 11 l 0 -22 z" fill="#2DD4BF" stroke="none"/>
+    <path d="M 0 -168 l 11 16 l -22 0 z" fill="#2DD4BF" stroke="none"/>
+    <path d="M 0 168 l -11 -16 l 22 0 z" fill="#2DD4BF" stroke="none"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="80" y="92" fill="#E6EAF2" font-size="26" font-weight="700" letter-spacing="6">OPENMAO</text>
+  <rect x="262" y="74" width="26" height="4" rx="2" fill="#2DD4BF"/>
+
+  <!-- hero -->
+  <text x="78" y="258" fill="#FFFFFF" font-size="74" font-weight="800" letter-spacing="-1">Build organizations,</text>
+  <text x="78" y="338" fill="#FFFFFF" font-size="74" font-weight="800" letter-spacing="-1">not just agents.</text>
+
+  <!-- subline -->
+  <text x="80" y="398" fill="#9AA4B6" font-size="25" font-weight="400">The open-source organization-of-record for AI agents —</text>
+  <text x="80" y="432" fill="#9AA4B6" font-size="25" font-weight="400">the accountable layer above any framework.</text>
+
+  <!-- the loop (the differentiator) -->
+  <text x="80" y="520" fill="#5EEAD4" font-size="21" font-weight="600" letter-spacing="0.3">governance → institutional memory → self-correction → audited track record → wider autonomy</text>
+
+  <!-- bottom strip -->
+  <text x="80" y="592" fill="#FFFFFF" font-size="22" font-weight="700">Autonomy is earned, not assumed.</text>
+  <text x="1200" y="592" fill="#6B7689" font-size="19" font-weight="500" text-anchor="end">Apache-2.0 · self-hostable · github.com/aeonbilal/OpenMAO</text>
+</svg>
