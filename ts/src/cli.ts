@@ -11,10 +11,15 @@ import {
   WorkItemStore,
 } from "./persistence/index.js";
 import { createApprovalServiceWithApplications } from "./runtime/approvals.js";
+import { createLocalCapabilityRegistry } from "./runtime/capabilities.js";
 import { openLocalDatabase } from "./runtime/local.js";
 import { PROMOTION_APPROVAL_ID, RUN_ID, SpineService, WORKSPACE_ID } from "./spine/index.js";
 import { WorkService } from "./work/index.js";
-import { runReferenceWorkerDemo } from "./workers/index.js";
+import {
+  approveReferenceWorkerDemo,
+  REFERENCE_RUN_ID,
+  runReferenceWorkerDemo,
+} from "./workers/index.js";
 import { WorldModelService } from "./world/index.js";
 
 type CliOptions = {
@@ -128,7 +133,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | worker demo | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
+        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
       );
       return 0;
     }
@@ -164,6 +169,11 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
     if (command === "worker" && subcommand === "demo") {
       requireDefaultWorkspace(selectedWorkspace);
       printJson(write, runReferenceWorkerDemo(database));
+      return 0;
+    }
+    if (command === "worker" && subcommand === "demo-approve") {
+      requireDefaultWorkspace(selectedWorkspace);
+      printJson(write, approveReferenceWorkerDemo(database));
       return 0;
     }
     if (command === "workers" && subcommand === "register") {
@@ -356,10 +366,26 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
         throw new Error("approval id is required");
       }
       const approval = new ApprovalService(database).approvals.get(approvalId);
-      if (approval?.payload.target_type === "capability_call") {
+      if (approval?.payload.target_type === "capability_call" && approval.run_id === RUN_ID) {
         printJson(
           write,
           spine.resumeApprovedCapability(approvalId, { workspace_id: selectedWorkspace }),
+        );
+      } else if (
+        approval?.payload.target_type === "capability_call" &&
+        approval.run_id === REFERENCE_RUN_ID
+      ) {
+        printJson(write, approveReferenceWorkerDemo(database));
+      } else if (approval?.payload.target_type === "capability_call") {
+        new ApprovalService(database).approve(approvalId, {
+          workspace_id: selectedWorkspace,
+          actor: "cli_operator",
+        });
+        printJson(
+          write,
+          createLocalCapabilityRegistry(database).resumeApprovedCall(approvalId, {
+            workspace_id: selectedWorkspace,
+          }),
         );
       } else if (approvalId === PROMOTION_APPROVAL_ID) {
         requireDefaultWorkspace(selectedWorkspace);

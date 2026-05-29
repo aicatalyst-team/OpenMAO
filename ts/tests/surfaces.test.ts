@@ -263,10 +263,23 @@ describe("TypeScript operator surfaces", () => {
 
   it("runs the reference external-worker demo through the CLI", async () => {
     const workerDemoOutput = capture();
+    const approvalsOutput = capture();
+    const workerApprovalOutput = capture();
     const worldOutput = capture();
 
     expect(await runCli(["worker", "demo"], { dbPath, write: workerDemoOutput.write })).toBe(0);
-    expect(JSON.parse(workerDemoOutput.lines[0] ?? "{}").work_status).toBe("done");
+    expect(JSON.parse(workerDemoOutput.lines[0] ?? "{}").status).toBe("suspended_approval");
+    expect(await runCli(["approvals", "list"], { dbPath, write: approvalsOutput.write })).toBe(0);
+    expect(JSON.parse(approvalsOutput.lines[0] ?? "[]")[0].id).toBe(
+      "approval_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    );
+    expect(
+      await runCli(["worker", "demo-approve"], {
+        dbPath,
+        write: workerApprovalOutput.write,
+      }),
+    ).toBe(0);
+    expect(JSON.parse(workerApprovalOutput.lines[0] ?? "{}").work_status).toBe("done");
     expect(await runCli(["world"], { dbPath, write: worldOutput.write })).toBe(0);
     expect(JSON.parse(worldOutput.lines[0] ?? "{}").external_workers).toEqual([
       "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
