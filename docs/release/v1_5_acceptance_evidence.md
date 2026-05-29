@@ -2,7 +2,7 @@
 
 This document maps the v1.5 institutional learning loop to code and test evidence.
 
-**Status:** release candidate, independent reviews passed
+**Status:** accepted stable release
 **Last updated:** 2026-05-29
 **Runtime:** TypeScript on Node.js 22 LTS
 
@@ -51,4 +51,4 @@ Latest verification on 2026-05-29:
 | QA review | Passed after repeated-blocker and hygiene fixes; tracked by GitHub issue #33 |
 | Security review | Passed after sensitive-material blocker fix; tracked by GitHub issue #34 |
 | Architecture review | Passed; tracked by GitHub issue #35 |
-| Maintainer release approval | Approved for `v0.3.0-rc.1` release candidate |
+| Maintainer release approval | Approved for `v0.3.0` stable release |

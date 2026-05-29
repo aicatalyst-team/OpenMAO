@@ -6,6 +6,13 @@ All notable public release changes for OpenMAO are documented here.
 
 No unreleased changes.
 
+## v0.3.0 - 2026-05-29
+
+Stable v1.5 institutional learning loop release.
+
+This promotes `v0.3.0-rc.1` after implementation checks, smoke verification, and independent QA,
+Security, and Architecture review gates.
+
 ## v0.3.0-rc.1 - 2026-05-29
 
 Release candidate for the v1.5 institutional learning loop milestone.
