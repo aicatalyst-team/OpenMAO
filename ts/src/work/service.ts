@@ -259,7 +259,11 @@ export class WorkService {
       });
       const saved = this.outcomes.record(outcome);
       const nextStatus = saved.status === "completed" ? "review" : saved.status;
-      if (workItem.status !== nextStatus) {
+      if (
+        workItem.status !== nextStatus &&
+        workItem.status !== "done" &&
+        workItem.status !== "failed"
+      ) {
         this.workItems.update(WorkItemSchema.parse({ ...workItem, status: nextStatus }));
       }
       this.events.append({

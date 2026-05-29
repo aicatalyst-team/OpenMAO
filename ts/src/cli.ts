@@ -14,6 +14,7 @@ import { createApprovalServiceWithApplications } from "./runtime/approvals.js";
 import { openLocalDatabase } from "./runtime/local.js";
 import { PROMOTION_APPROVAL_ID, RUN_ID, SpineService, WORKSPACE_ID } from "./spine/index.js";
 import { WorkService } from "./work/index.js";
+import { runReferenceWorkerDemo } from "./workers/index.js";
 import { WorldModelService } from "./world/index.js";
 
 type CliOptions = {
@@ -127,7 +128,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
+        "openmao demo | demo-approve | init | run demo|resume | worker demo | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
       );
       return 0;
     }
@@ -158,6 +159,11 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
     }
     if (command === "workers" && subcommand === "list") {
       printJson(write, new WorkerIdentityStore(database).listForWorkspace(selectedWorkspace));
+      return 0;
+    }
+    if (command === "worker" && subcommand === "demo") {
+      requireDefaultWorkspace(selectedWorkspace);
+      printJson(write, runReferenceWorkerDemo(database));
       return 0;
     }
     if (command === "workers" && subcommand === "register") {

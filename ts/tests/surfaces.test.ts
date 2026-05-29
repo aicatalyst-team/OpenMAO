@@ -261,6 +261,18 @@ describe("TypeScript operator surfaces", () => {
     expect(JSON.parse(ingestionListOutput.lines[0] ?? "[]")).toHaveLength(1);
   });
 
+  it("runs the reference external-worker demo through the CLI", async () => {
+    const workerDemoOutput = capture();
+    const worldOutput = capture();
+
+    expect(await runCli(["worker", "demo"], { dbPath, write: workerDemoOutput.write })).toBe(0);
+    expect(JSON.parse(workerDemoOutput.lines[0] ?? "{}").work_status).toBe("done");
+    expect(await runCli(["world"], { dbPath, write: worldOutput.write })).toBe(0);
+    expect(JSON.parse(worldOutput.lines[0] ?? "{}").external_workers).toEqual([
+      "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    ]);
+  });
+
   it("serves demo, approvals, world, and console over HTTP", async () => {
     const server = createServer({ dbPath, operatorToken });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
