@@ -3,7 +3,7 @@ export class SensitiveMaterialError extends Error {}
 const SENSITIVE_KEY_PATTERN =
   /(?:password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|bearer|private[_-]?key|client[_-]?secret|credential[_-]?value)/i;
 const SENSITIVE_VALUE_PATTERN =
-  /(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{8,}|xox[baprs]-[A-Za-z0-9-]{8,}|Bearer\s+\S+|-----BEGIN [^-]+PRIVATE KEY-----|(?:secret|token|password|api[_-]?key)[A-Za-z0-9_:-]{6,})/i;
+  /(?:sk-[A-Za-z0-9_-]{8,}|github_pat_[A-Za-z0-9_]{8,}|gh[pousr]_[A-Za-z0-9_]{8,}|xox[baprs]-[A-Za-z0-9-]{8,}|Bearer\s+\S+|-----BEGIN [^-]+PRIVATE KEY-----|(?:secret|token|password|api[_-]?key)[A-Za-z0-9_:-]{6,})/i;
 const CREDENTIAL_HANDLE_PATTERN = /^cred_[A-Za-z0-9_.:-]+$/;
 
 export function validateCredentialHandle(handle: string): void {

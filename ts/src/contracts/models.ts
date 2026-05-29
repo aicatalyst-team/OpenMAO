@@ -310,6 +310,15 @@ export const CapabilitySchema = z
     providers: z.array(z.string()).default([]),
     side_effecting: z.boolean().default(false),
     credential_handle_required: z.boolean().default(false),
+    // Constrained to a cred_* shape with a field-level regex so the constraint
+    // is emitted into the portable canonical JSON Schema (a .refine() would be
+    // runtime-only and diverge from the published schema). The persistence layer
+    // additionally screens for secret-shaped material.
+    credential_handle: z
+      .string()
+      .regex(/^cred_[A-Za-z0-9_.:-]+$/, "credential_handle must be a cred_* handle")
+      .nullable()
+      .default(null),
     default_permission: z
       .enum(["enabled", "approval_required", "disabled"])
       .default("approval_required"),
