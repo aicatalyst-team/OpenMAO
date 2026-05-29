@@ -10,6 +10,8 @@ import { IngestionService } from "../ingestion/index.js";
 import {
   AgentStore,
   BoundedWorkEnvelopeStore,
+  CapabilityCallStore,
+  CapabilityResultStore,
   CapabilityStore,
   type Database,
   EventStore,
@@ -26,6 +28,7 @@ import {
   WorkspaceStore,
 } from "../persistence/index.js";
 import { createApprovalServiceWithApplications } from "../runtime/approvals.js";
+import { createLocalCapabilityRegistry } from "../runtime/capabilities.js";
 import { openLocalDatabase } from "../runtime/local.js";
 import {
   COORDINATOR_AGENT_ID,
@@ -35,6 +38,11 @@ import {
   WORKSPACE_ID,
 } from "../spine/index.js";
 import { WorkService } from "../work/index.js";
+import {
+  approveReferenceWorkerDemo,
+  REFERENCE_RUN_ID,
+  runReferenceWorkerDemo,
+} from "../workers/index.js";
 import { WorldModelService } from "../world/index.js";
 
 type ServerOptions = {
@@ -297,6 +305,22 @@ export function createServer(options: ServerOptions = {}) {
         );
         return;
       }
+      if (request.method === "GET" && url.pathname === "/capability-calls") {
+        sendJson(
+          response,
+          200,
+          new CapabilityCallStore(database).listForWorkspace(context.workspaceId),
+        );
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/capability-results") {
+        sendJson(
+          response,
+          200,
+          new CapabilityResultStore(database).listForWorkspace(context.workspaceId),
+        );
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/workers") {
         sendJson(
           response,
@@ -325,6 +349,26 @@ export function createServer(options: ServerOptions = {}) {
             idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : null,
           }),
         );
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/workers/reference-demo") {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        if (!requireDemoWorkspace(response, context.workspaceId)) {
+          return;
+        }
+        sendJson(response, 200, runReferenceWorkerDemo(database));
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/workers/reference-demo/approve") {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        if (!requireDemoWorkspace(response, context.workspaceId)) {
+          return;
+        }
+        sendJson(response, 200, approveReferenceWorkerDemo(database));
         return;
       }
       if (request.method === "GET" && url.pathname === "/ingestion") {
@@ -682,12 +726,32 @@ export function createServer(options: ServerOptions = {}) {
             200,
             spine.resumeDemo(approvalRoute.approvalId, { actor: context.actor }),
           );
-        } else if (approval.payload.target_type === "capability_call") {
+        } else if (
+          approval.payload.target_type === "capability_call" &&
+          approval.run_id === RUN_ID
+        ) {
           sendJson(
             response,
             200,
             spine.resumeApprovedCapability(approvalRoute.approvalId, {
               actor: context.actor,
+              workspace_id: context.workspaceId,
+            }),
+          );
+        } else if (
+          approval.payload.target_type === "capability_call" &&
+          approval.run_id === REFERENCE_RUN_ID
+        ) {
+          sendJson(response, 200, approveReferenceWorkerDemo(database));
+        } else if (approval.payload.target_type === "capability_call") {
+          new ApprovalService(database).approve(approvalRoute.approvalId, {
+            workspace_id: context.workspaceId,
+            actor: context.actor,
+          });
+          sendJson(
+            response,
+            200,
+            createLocalCapabilityRegistry(database).resumeApprovedCall(approvalRoute.approvalId, {
               workspace_id: context.workspaceId,
             }),
           );
@@ -845,6 +909,8 @@ function consoleHtml(): string {
       <input id="token-input" type="password" autocomplete="off" placeholder="Operator token" />
       <button data-action="/runs/demo">Run Demo</button>
       <button data-action="/runs/demo/approve">Approve Demo</button>
+      <button data-action="/workers/reference-demo">Run Worker</button>
+      <button data-action="/workers/reference-demo/approve">Approve Worker</button>
       <button id="refresh">Refresh</button>
       <button id="reset-token">Reset Token</button>
     </div>
@@ -859,6 +925,8 @@ function consoleHtml(): string {
       <button data-view="promotions">Promotions</button>
       <button data-view="memory">Memory</button>
       <button data-view="capabilities">Capabilities</button>
+      <button data-view="capabilityCalls">Capability Calls</button>
+      <button data-view="capabilityResults">Capability Results</button>
       <button data-view="events">Events</button>
       <button data-view="traces">Traces</button>
     </nav>
@@ -967,6 +1035,8 @@ function consoleHtml(): string {
           coordinator: await request("/memory/individual/" + coordinatorAgentId)
         });
         if (view === "capabilities") return renderRows(await request("/capabilities"), ["name", "default_permission", "providers"]);
+        if (view === "capabilityCalls") return renderRows(await request("/capability-calls"), ["id", "capability_name", "provider", "requested_by", "risk_level"]);
+        if (view === "capabilityResults") return renderRows(await request("/capability-results"), ["id", "call_id", "status", "run_id"]);
         if (view === "events") return renderRows(await request("/events"), ["seq", "run_seq", "kind", "actor", "run_id"]);
         if (view === "traces") {
           const runs = await request("/runs");

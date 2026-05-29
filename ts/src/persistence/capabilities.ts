@@ -156,6 +156,19 @@ export class CapabilityCallStore {
 
     return row ? CapabilityCallSchema.parse(JSON.parse(row.payload_json)) : null;
   }
+
+  listForWorkspace(workspaceId: string): CapabilityCall[] {
+    const rows = this.database.connection
+      .prepare(
+        `SELECT payload_json
+         FROM capability_calls
+         WHERE workspace_id = ?
+         ORDER BY id`,
+      )
+      .all(workspaceId) as PayloadRow[];
+
+    return rows.map((row) => CapabilityCallSchema.parse(JSON.parse(row.payload_json)));
+  }
 }
 
 export class CapabilityResultStore {
@@ -212,5 +225,18 @@ export class CapabilityResultStore {
       .get(workspaceId, callId) as PayloadRow | undefined;
 
     return row ? CapabilityResultSchema.parse(JSON.parse(row.payload_json)) : null;
+  }
+
+  listForWorkspace(workspaceId: string): CapabilityResult[] {
+    const rows = this.database.connection
+      .prepare(
+        `SELECT payload_json
+         FROM capability_results
+         WHERE workspace_id = ?
+         ORDER BY id`,
+      )
+      .all(workspaceId) as PayloadRow[];
+
+    return rows.map((row) => CapabilityResultSchema.parse(JSON.parse(row.payload_json)));
   }
 }

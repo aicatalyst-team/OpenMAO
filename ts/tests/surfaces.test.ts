@@ -15,6 +15,11 @@ import {
   RUN_ID,
   WORKSPACE_ID,
 } from "../src/spine/index.js";
+import {
+  REFERENCE_CAPABILITY_APPROVAL_ID,
+  REFERENCE_RUN_ID,
+  REFERENCE_WORKER_ID,
+} from "../src/workers/index.js";
 
 let tmpRoot: string;
 let dbPath: string;
@@ -535,6 +540,67 @@ describe("TypeScript operator surfaces", () => {
           "ingestion.recorded",
         ]),
       );
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("serves the reference worker gateway flow over HTTP", async () => {
+    const server = createServer({ dbPath, operatorToken });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      const started = (await fetch(`${baseUrl}/workers/reference-demo`, {
+        method: "POST",
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as {
+        capability_approval_id: string;
+        status: string;
+      };
+      const approvals = (await fetch(`${baseUrl}/approvals`, { headers: operatorHeaders }).then(
+        (response) => response.json(),
+      )) as Array<{ id: string }>;
+      const approved = (await fetch(
+        `${baseUrl}/approvals/${REFERENCE_CAPABILITY_APPROVAL_ID}/approve`,
+        {
+          method: "POST",
+          headers: operatorHeaders,
+        },
+      ).then((response) => response.json())) as {
+        capability_result_id: string;
+        status: string;
+        work_status: string;
+      };
+      const capabilityCalls = (await fetch(`${baseUrl}/capability-calls`, {
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as Array<{ id: string; requested_by: string }>;
+      const capabilityResults = (await fetch(`${baseUrl}/capability-results`, {
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as Array<{ call_id: string; status: string }>;
+      const world = (await fetch(`${baseUrl}/world?run_id=${REFERENCE_RUN_ID}`, {
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as {
+        external_workers: string[];
+        latest_run_status: string;
+      };
+      const consoleHtml = await fetch(`${baseUrl}/console`).then((response) => response.text());
+
+      expect(started.status).toBe("suspended_approval");
+      expect(started.capability_approval_id).toBe(REFERENCE_CAPABILITY_APPROVAL_ID);
+      expect(approvals.at(0)?.id).toBe(REFERENCE_CAPABILITY_APPROVAL_ID);
+      expect(approved.status).toBe("completed");
+      expect(approved.work_status).toBe("done");
+      expect(approved.capability_result_id).toMatch(/^capresult_/);
+      expect(capabilityCalls.at(0)?.requested_by).toBe(REFERENCE_WORKER_ID);
+      expect(capabilityResults.at(0)?.status).toBe("ok");
+      expect(world.latest_run_status).toBe("completed");
+      expect(world.external_workers).toContain(REFERENCE_WORKER_ID);
+      expect(consoleHtml).toContain("/workers/reference-demo");
+      expect(consoleHtml).toContain('data-view="capabilityCalls"');
+      expect(consoleHtml).toContain('data-view="capabilityResults"');
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
