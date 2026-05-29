@@ -165,9 +165,11 @@ see the asset growing across runs and teams.
 
 **The frontier. Autonomy:** `bounded` and widening.
 
-This is the differentiator and the genuinely hard research frontier. `OrgChangeProposal` moves from
-a dormant seam to an active, ratified loop. Self-correction is hard: build it carefully, keep humans
-ratifying, and never auto-apply.
+This is the differentiator and the genuinely hard research frontier. `OrgChangeProposal` has moved
+from a dormant seam into an initial institutional-learning loop: OpenMAO can detect early
+operational patterns, create evidence-backed proposals, and route them through human review.
+Deeper self-correction is still hard: build it carefully, keep humans ratifying, and never
+auto-apply.
 
 The loop:
 
@@ -183,6 +185,15 @@ Hard constraints:
 - high-impact changes always require human review;
 - every proposal and decision is traceable and reversible;
 - rejected proposals remain useful as organizational memory rather than disappearing.
+
+Initial v1.5 scope:
+
+- deterministic local detectors for repeated blockers, failed handoffs, stale memory, missing or
+  disabled capabilities, and approval bottlenecks;
+- evidence-backed `OrgChangeProposal` records with review approval, rejection, and explicit
+  applied-marker events;
+- CLI, API, console, and world-model visibility for proposals;
+- no automatic mutation of roles, policies, memory, capabilities, or org graph.
 
 This is the stage where outcomes start improving the organization's own structure. The flywheel
 turns.

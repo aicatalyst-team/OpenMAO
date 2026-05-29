@@ -6,6 +6,24 @@ All notable public release changes for OpenMAO are documented here.
 
 No unreleased changes.
 
+## v0.3.0-rc.1 - 2026-05-29
+
+Release candidate for the v1.5 institutional learning loop milestone.
+
+### Added
+
+- Institutional learning scan that detects repeated blockers, failed handoffs, approval bottlenecks, missing/disabled capabilities, and stale memory.
+- Evidence-backed `OrgChangeProposal` lifecycle with proposal review approval, rejection, and explicit applied-marker events.
+- CLI, API, console, and world-model visibility for learning proposals.
+- v1.5 acceptance evidence at `docs/release/v1_5_acceptance_evidence.md`.
+
+### Verification
+
+- `make check`
+- `rm -rf .openmao && make demo && make demo-approve && rm -rf .openmao`
+- `rm -rf .openmao && npm run cli -- worker demo && npm run cli -- approvals approve approval_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb && rm -rf .openmao`
+- deterministic local learning smoke: create repeated blockers, run `learning scan`, approve the generated proposal, mark it applied, and remove `.openmao`.
+
 ## v0.2.0-rc.1 - 2026-05-29
 
 Release candidate for the v1 enforced capability governance milestone.

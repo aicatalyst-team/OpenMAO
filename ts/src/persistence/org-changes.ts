@@ -2,7 +2,13 @@ import { type OrgChangeProposal, OrgChangeProposalSchema, utcNow } from "../cont
 import type { Database } from "./database.js";
 import { dumpJson, jsonEqual } from "./serialization.js";
 
-export type OrgChangeStatus = "draft" | "pending" | "approved" | "rejected" | "applied";
+export type OrgChangeStatus =
+  | "draft"
+  | "pending"
+  | "proposed"
+  | "approved"
+  | "rejected"
+  | "applied";
 type PayloadRow = { payload_json: string };
 
 export class OrgChangeProposalError extends Error {}
@@ -13,7 +19,7 @@ export class OrgChangeProposalStore {
   save(proposal: OrgChangeProposal): OrgChangeProposal {
     const parsed = OrgChangeProposalSchema.parse(proposal);
     if (parsed.status === "applied") {
-      throw new OrgChangeProposalError("v0 must not persist applied org mutations");
+      throw new OrgChangeProposalError("new org change proposals must not be saved as applied");
     }
 
     return this.database.transaction(() => {
@@ -41,9 +47,21 @@ export class OrgChangeProposalStore {
     return row ? OrgChangeProposalSchema.parse(JSON.parse(row.payload_json)) : null;
   }
 
+  listForWorkspace(workspaceId: string): OrgChangeProposal[] {
+    const rows = this.database.connection
+      .prepare(
+        `SELECT payload_json
+         FROM org_change_proposals
+         WHERE workspace_id = ?
+         ORDER BY id`,
+      )
+      .all(workspaceId) as PayloadRow[];
+    return rows.map((row) => OrgChangeProposalSchema.parse(JSON.parse(row.payload_json)));
+  }
+
   setStatus(
     proposalId: string,
-    status: Exclude<OrgChangeStatus, "draft" | "applied">,
+    status: Exclude<OrgChangeStatus, "draft" | "pending" | "proposed">,
     options: { resolved_at?: string | null } = {},
   ): OrgChangeProposal {
     return this.database.transaction(() => {
@@ -51,9 +69,29 @@ export class OrgChangeProposalStore {
       if (!current) {
         throw new Error(`org change proposal not found: ${proposalId}`);
       }
-      if (current.status === "approved" || current.status === "rejected") {
+      if (status === "applied" && current.status !== "approved" && current.status !== "applied") {
+        throw new OrgChangeProposalError(
+          `org change proposal must be approved before applied: ${proposalId}`,
+        );
+      }
+      if (
+        current.status === "approved" ||
+        current.status === "rejected" ||
+        current.status === "applied"
+      ) {
         if (current.status === status) {
           return current;
+        }
+        if (current.status === "approved" && status === "applied") {
+          const applied = OrgChangeProposalSchema.parse({
+            ...current,
+            status,
+            applied_at: options.resolved_at ?? utcNow(),
+          });
+          this.database.connection
+            .prepare("UPDATE org_change_proposals SET status = ?, payload_json = ? WHERE id = ?")
+            .run(applied.status, dumpJson(applied), applied.id);
+          return applied;
         }
         throw new OrgChangeProposalError(
           `org change proposal already resolved as ${current.status}: ${proposalId}`,
@@ -66,6 +104,7 @@ export class OrgChangeProposalStore {
           status === "approved" || status === "rejected"
             ? (options.resolved_at ?? utcNow())
             : current.resolved_at,
+        applied_at: status === "applied" ? (options.resolved_at ?? utcNow()) : current.applied_at,
       });
       this.database.connection
         .prepare("UPDATE org_change_proposals SET status = ?, payload_json = ? WHERE id = ?")

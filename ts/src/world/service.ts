@@ -14,6 +14,7 @@ import {
   EventStore,
   GoalStore,
   IngestionRecordStore,
+  OrgChangeProposalStore,
   RunStore,
   TaskEnvelopeStore,
   WorkerIdentityStore,
@@ -33,6 +34,7 @@ export class WorldModelService {
   private readonly events: EventStore;
   private readonly goals: GoalStore;
   private readonly ingestions: IngestionRecordStore;
+  private readonly orgChanges: OrgChangeProposalStore;
   private readonly runs: RunStore;
   private readonly snapshots: WorldModelSnapshotStore;
   private readonly tasks: TaskEnvelopeStore;
@@ -46,6 +48,7 @@ export class WorldModelService {
     this.events = new EventStore(database);
     this.goals = new GoalStore(database);
     this.ingestions = new IngestionRecordStore(database);
+    this.orgChanges = new OrgChangeProposalStore(database);
     this.runs = new RunStore(database);
     this.snapshots = new WorldModelSnapshotStore(database);
     this.tasks = new TaskEnvelopeStore(database);
@@ -104,6 +107,20 @@ export class WorldModelService {
         .slice(-RECENT_EVENT_LIMIT)
         .map((ingestion) => ingestion.id);
       const capabilityGaps = this.capabilityGaps(workspaceId);
+      const orgChangeProposals = this.orgChanges.listForWorkspace(workspaceId);
+      const openOrgChangeProposals = orgChangeProposals
+        .filter((proposal) =>
+          ["draft", "pending", "proposed", "approved"].includes(proposal.status),
+        )
+        .map((proposal) => proposal.id)
+        .sort();
+      const learningSignals = [
+        ...new Set(
+          orgChangeProposals
+            .filter((proposal) => proposal.source_signal !== "manual")
+            .map((proposal) => proposal.source_signal),
+        ),
+      ].sort();
       const recentEvents = workspaceEvents.slice(-RECENT_EVENT_LIMIT).map((event) => event.id);
       const sourceWorkspaceSeq = Math.max(0, ...workspaceEvents.map((event) => event.seq));
       const runSeqs = runEvents
@@ -119,6 +136,8 @@ export class WorldModelService {
         blockers,
         pending_approvals: pendingApprovalIds,
         pending_reviews: pendingReviews,
+        open_org_change_proposals: openOrgChangeProposals,
+        learning_signals: learningSignals,
         external_workers: externalWorkers,
         recent_ingestions: recentIngestions,
         capability_gaps: capabilityGaps,

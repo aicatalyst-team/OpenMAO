@@ -1,6 +1,6 @@
 {
   "name": "openmao",
-  "version": "0.2.0-rc.1",
+  "version": "0.3.0-rc.1",
   "private": true,
   "type": "module",
   "description": "Open-source substrate for accountable, self-correcting AI organizations.",
@@ -12,7 +12,7 @@
     "format": "biome format --write package.json tsconfig.json biome.json ts scripts",
     "lint": "biome check package.json tsconfig.json biome.json ts scripts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --dir ts/tests",
     "hygiene:public": "tsx scripts/check-public-hygiene.ts",
     "check": "npm run lint && npm run typecheck && npm run test && npm run hygiene:public",
     "schema:generate": "tsx scripts/generate-canonical-schema.ts",

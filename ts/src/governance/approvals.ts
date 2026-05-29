@@ -17,6 +17,7 @@ import {
   CheckpointStore,
   type Database,
   EventStore,
+  OrgChangeProposalStore,
   PromotionCandidateStore,
   RunStore,
   TraceStore,
@@ -315,6 +316,33 @@ export class ApprovalService {
   }
 
   private rejectTarget(approval: ApprovalRequest): void {
+    if (approval.payload.target_type === "org_change_proposal") {
+      const store = new OrgChangeProposalStore(this.database);
+      const proposal = store.get(approval.payload.target_id);
+      if (!proposal) {
+        throw new Error(`org change proposal not found: ${approval.payload.target_id}`);
+      }
+      if (proposal.workspace_id !== approval.workspace_id) {
+        throw new ApprovalApplicationError(
+          "approval workspace does not match org change proposal workspace",
+        );
+      }
+      const rejected = store.setStatus(proposal.id, "rejected", {
+        resolved_at: approval.resolved_at,
+      });
+      this.events.append({
+        workspace_id: approval.workspace_id,
+        run_id: approval.run_id,
+        kind: "org_change.rejected",
+        actor: "approval_service",
+        payload: EventPayloadSchema.parse({
+          data: { approval_request: approval, org_change_proposal: rejected },
+          refs: [approval.id, rejected.id],
+        }),
+        idempotency_key: `${approval.id}:org_change.rejected`,
+      });
+      return;
+    }
     if (
       approval.on_reject !== "fail_run" ||
       approval.payload.target_type !== "promotion_candidate"

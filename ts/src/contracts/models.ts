@@ -553,6 +553,36 @@ export const ModelResponseSchema = z
   })
   .strict();
 
+export const OrgChangeEvidenceSchema = z
+  .object({
+    kind: z.enum([
+      "event",
+      "trace",
+      "work_item",
+      "approval",
+      "memory_entry",
+      "capability",
+      "ingestion",
+      "world_model",
+      "external_url",
+      "other",
+    ]),
+    ref_id: z.string(),
+    summary: z.string(),
+    weight: z.number().default(1),
+  })
+  .strict();
+
+export const OrgChangeSourceSignalSchema = z.enum([
+  "manual",
+  "repeated_blocker",
+  "failed_handoff",
+  "approval_bottleneck",
+  "missing_capability",
+  "stale_memory",
+  "other",
+]);
+
 export const OrgChangeProposalSchema = z
   .object({
     id: CanonicalIdSchema,
@@ -561,17 +591,29 @@ export const OrgChangeProposalSchema = z
     change_type: z.enum([
       "role",
       "workflow",
+      "sop",
       "policy",
       "capability",
+      "capability_grant",
+      "capability_change",
       "memory",
+      "memory_cleanup",
       "org_graph",
       "other",
     ]),
+    source_signal: OrgChangeSourceSignalSchema.default("manual"),
     rationale: z.string(),
+    evidence: z.array(OrgChangeEvidenceSchema).default([]),
     patch_json: recordSchema.default({}),
-    status: z.enum(["draft", "pending", "approved", "rejected", "applied"]).default("draft"),
+    confidence: z.number().min(0).max(1).default(0.5),
+    impact: z.enum(["low", "medium", "high"]).default("medium"),
+    review_approval_id: CanonicalIdSchema.nullable().default(null),
+    status: z
+      .enum(["draft", "pending", "proposed", "approved", "rejected", "applied"])
+      .default("draft"),
     created_at: UtcTimestampSchema,
     resolved_at: UtcTimestampSchema.nullable().default(null),
+    applied_at: UtcTimestampSchema.nullable().default(null),
   })
   .strict();
 
@@ -585,6 +627,8 @@ export const WorldModelSnapshotSchema = z
     blockers: z.array(z.string()).default([]),
     pending_approvals: z.array(CanonicalIdSchema).default([]),
     pending_reviews: z.array(CanonicalIdSchema).default([]),
+    open_org_change_proposals: z.array(CanonicalIdSchema).default([]),
+    learning_signals: z.array(z.string()).default([]),
     external_workers: z.array(CanonicalIdSchema).default([]),
     recent_ingestions: z.array(CanonicalIdSchema).default([]),
     capability_gaps: z.array(z.string()).default([]),
@@ -641,6 +685,8 @@ export const schemaDefinitions = {
   ApprovalPayload: ApprovalPayloadSchema,
   EventPayload: EventPayloadSchema,
   CapabilityProviderRef: CapabilityProviderRefSchema,
+  OrgChangeEvidence: OrgChangeEvidenceSchema,
+  OrgChangeSourceSignal: OrgChangeSourceSignalSchema,
   ...canonicalModelSchemas,
 } as const;
 
@@ -685,5 +731,7 @@ export type Trace = z.infer<typeof TraceSchema>;
 export type NodeEffect = z.infer<typeof NodeEffectSchema>;
 export type ModelRequest = z.infer<typeof ModelRequestSchema>;
 export type ModelResponse = z.infer<typeof ModelResponseSchema>;
+export type OrgChangeEvidence = z.infer<typeof OrgChangeEvidenceSchema>;
+export type OrgChangeSourceSignal = z.infer<typeof OrgChangeSourceSignalSchema>;
 export type OrgChangeProposal = z.infer<typeof OrgChangeProposalSchema>;
 export type WorldModelSnapshot = z.infer<typeof WorldModelSnapshotSchema>;

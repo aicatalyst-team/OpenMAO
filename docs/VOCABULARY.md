@@ -19,7 +19,7 @@ to the current contract model names. If a concept is not listed here, defer to
 | Cooperative integration | A worker voluntarily calls OpenMAO to record or request governance actions. Useful, but weaker than enforced capability access. |
 | System of record for AI work | OpenMAO's role: preserving the accountable work history and organizational consequences across runs, agents, tools, and frameworks. |
 | Organizational memory | The governed memory plane where individual observations, artifacts, and decisions can become trusted collective knowledge through promotion. |
-| Governed self-learning | A future loop where OpenMAO proposes improvements to roles, policies, workflows, memory, and capabilities based on observed evidence, subject to review. |
+| Governed self-learning | The loop where OpenMAO proposes improvements to roles, policies, workflows, memory, and capabilities based on observed evidence, subject to review. |
 | Autonomy dial | The gradual widening of what the organization may do without per-action human approval, based on audited evidence of safe operation. |
 | Self-correcting organization | The long-term target: an organization that uses governed memory, audit, and world-model evidence to propose and ratify improvements to its own behavior and structure. |
 
@@ -52,7 +52,7 @@ to the current contract model names. If a concept is not listed here, defer to
 | Idempotency record | `NodeEffect` | Tracks one-time side effects per node. |
 | Model request | `ModelRequest` | All inference routes through here. |
 | Model response | `ModelResponse` | Persisted with cost. |
-| Org change proposal | `OrgChangeProposal` | Placeholder seam for future self-improvement. |
+| Org change proposal | `OrgChangeProposal` | Evidence-backed proposal for a reviewed role, policy, SOP/workflow, memory, capability, or org-graph change. |
 | Operational view | `WorldModelSnapshot` | Materialized projection from events; cache only. |
 
 ## Notable Splits

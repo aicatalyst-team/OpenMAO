@@ -268,6 +268,88 @@ describe("TypeScript operator surfaces", () => {
     expect(JSON.parse(ingestionListOutput.lines[0] ?? "[]")).toHaveLength(1);
   });
 
+  it("runs learning scans and proposal review through the CLI", async () => {
+    const initOutput = capture();
+    const firstWorkOutput = capture();
+    const secondWorkOutput = capture();
+    const scanOutput = capture();
+    const proposalsOutput = capture();
+    const approvedOutput = capture();
+    const appliedOutput = capture();
+
+    expect(await runCli(["init"], { dbPath, write: initOutput.write })).toBe(0);
+    expect(
+      await runCli(
+        [
+          "work",
+          "create",
+          "--id",
+          "work_11111111111111111111111111111111",
+          "--title",
+          "Blocked research",
+          "--objective",
+          "Research is blocked.",
+          "--owner",
+          "worker:research",
+        ],
+        { dbPath, write: firstWorkOutput.write },
+      ),
+    ).toBe(0);
+    expect(
+      await runCli(
+        [
+          "work",
+          "create",
+          "--id",
+          "work_22222222222222222222222222222222",
+          "--title",
+          "Blocked brief",
+          "--objective",
+          "Brief is blocked.",
+          "--owner",
+          "worker:research",
+        ],
+        { dbPath, write: secondWorkOutput.write },
+      ),
+    ).toBe(0);
+    expect(
+      await runCli(["work", "status", "work_11111111111111111111111111111111", "blocked"], {
+        dbPath,
+      }),
+    ).toBe(0);
+    expect(
+      await runCli(["work", "status", "work_22222222222222222222222222222222", "blocked"], {
+        dbPath,
+      }),
+    ).toBe(0);
+    expect(await runCli(["learning", "scan"], { dbPath, write: scanOutput.write })).toBe(0);
+    const scan = JSON.parse(scanOutput.lines[0] ?? "{}") as {
+      proposals: Array<{ approval_id: string; proposal: { id: string; source_signal: string } }>;
+    };
+    const proposal = scan.proposals.find(
+      (item) => item.proposal.source_signal === "repeated_blocker",
+    );
+    expect(proposal).toBeDefined();
+    expect(await runCli(["learning", "proposals"], { dbPath, write: proposalsOutput.write })).toBe(
+      0,
+    );
+    expect(JSON.parse(proposalsOutput.lines[0] ?? "[]").at(0).status).toBe("proposed");
+    expect(
+      await runCli(["approvals", "approve", proposal?.approval_id ?? ""], {
+        dbPath,
+        write: approvedOutput.write,
+      }),
+    ).toBe(0);
+    expect(JSON.parse(approvedOutput.lines[0] ?? "{}").status).toBe("approved");
+    expect(
+      await runCli(["learning", "apply", proposal?.proposal.id ?? ""], {
+        dbPath,
+        write: appliedOutput.write,
+      }),
+    ).toBe(0);
+    expect(JSON.parse(appliedOutput.lines[0] ?? "{}").status).toBe("applied");
+  });
+
   it("runs the reference external-worker demo through the CLI", async () => {
     const workerDemoOutput = capture();
     const approvalsOutput = capture();
@@ -592,6 +674,75 @@ describe("TypeScript operator surfaces", () => {
           "ingestion.recorded",
         ]),
       );
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("serves learning scans and proposal review over HTTP", async () => {
+    const server = createServer({ dbPath, operatorToken });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const jsonHeaders = { ...operatorHeaders, "content-type": "application/json" };
+    try {
+      await fetch(`${baseUrl}/workspaces`, { headers: operatorHeaders });
+      for (const [id, title] of [
+        ["work_11111111111111111111111111111111", "Blocked research"],
+        ["work_22222222222222222222222222222222", "Blocked brief"],
+      ]) {
+        await fetch(`${baseUrl}/work`, {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify({
+            id,
+            title,
+            objective: `${title} objective.`,
+            owner: "worker:research",
+          }),
+        });
+        await fetch(`${baseUrl}/work/${id}/status`, {
+          method: "POST",
+          headers: jsonHeaders,
+          body: JSON.stringify({ status: "blocked", reason: "Missing input." }),
+        });
+      }
+      const scan = (await fetch(`${baseUrl}/learning/scan`, {
+        method: "POST",
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as {
+        proposals: Array<{ approval_id: string; proposal: { id: string; status: string } }>;
+      };
+      const listed = (await fetch(`${baseUrl}/learning/proposals`, {
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as Array<{
+        id: string;
+        review_approval_id: string;
+        status: string;
+      }>;
+      const proposal = listed[0];
+      const approved = (await fetch(
+        `${baseUrl}/approvals/${proposal?.review_approval_id}/approve`,
+        {
+          method: "POST",
+          headers: operatorHeaders,
+        },
+      ).then((response) => response.json())) as { status: string };
+      const applied = (await fetch(`${baseUrl}/learning/proposals/${proposal?.id}/apply`, {
+        method: "POST",
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as { status: string };
+      const world = (await fetch(`${baseUrl}/world`, { headers: operatorHeaders }).then(
+        (response) => response.json(),
+      )) as { learning_signals: string[] };
+
+      expect(scan.proposals.at(0)?.proposal.status).toBe("proposed");
+      expect(proposal?.status).toBe("proposed");
+      expect(approved.status).toBe("approved");
+      expect(applied.status).toBe("applied");
+      expect(world.learning_signals).toContain("repeated_blocker");
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

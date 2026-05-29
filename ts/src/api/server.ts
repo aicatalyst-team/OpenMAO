@@ -7,6 +7,8 @@ import {
 
 import { ApprovalService } from "../governance/index.js";
 import { IngestionService } from "../ingestion/index.js";
+import { LearningService } from "../learning/index.js";
+import { OrgChangeService } from "../org/index.js";
 import {
   AgentStore,
   BoundedWorkEnvelopeStore,
@@ -18,6 +20,7 @@ import {
   IngestionRecordStore,
   MemoryEntryStore,
   OrganizationStore,
+  OrgChangeProposalStore,
   PromotionCandidateStore,
   RoleStore,
   RunStore,
@@ -78,6 +81,8 @@ function sendNotFound(response: ServerResponse): void {
 function routePattern(pathname: string): {
   approvalId: string | undefined;
   individualMemoryAgentId: string | undefined;
+  learningProposalApplyId: string | undefined;
+  learningProposalId: string | undefined;
   runEventsId: string | undefined;
   runId: string | undefined;
   runResumeId: string | undefined;
@@ -97,9 +102,13 @@ function routePattern(pathname: string): {
   const workMatch = /^\/work\/([^/]+)(?:\/(?:assign|status|review))?$/.exec(pathname);
   const workspaceEventsMatch = /^\/workspaces\/([^/]+)\/events$/.exec(pathname);
   const individualMemoryMatch = /^\/memory\/individual\/([^/]+)$/.exec(pathname);
+  const learningProposalApplyMatch = /^\/learning\/proposals\/([^/]+)\/apply$/.exec(pathname);
+  const learningProposalMatch = /^\/learning\/proposals\/([^/]+)$/.exec(pathname);
   return {
     approvalId: approvalMatch?.[1],
     individualMemoryAgentId: individualMemoryMatch?.[1],
+    learningProposalApplyId: learningProposalApplyMatch?.[1],
+    learningProposalId: learningProposalMatch?.[1],
     runEventsId: runEventsMatch?.[1],
     runId: runMatch?.[1],
     runResumeId: runResumeMatch?.[1],
@@ -723,6 +732,44 @@ export function createServer(options: ServerOptions = {}) {
         );
         return;
       }
+      if (request.method === "GET" && url.pathname === "/learning/proposals") {
+        sendJson(
+          response,
+          200,
+          new OrgChangeProposalStore(database).listForWorkspace(context.workspaceId),
+        );
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/learning/scan") {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        sendJson(response, 200, new LearningService(database).scan(context.workspaceId));
+        return;
+      }
+      if (request.method === "GET" && approvalRoute.learningProposalId) {
+        const proposal = new OrgChangeProposalStore(database).get(approvalRoute.learningProposalId);
+        if (!proposal || proposal.workspace_id !== context.workspaceId) {
+          sendNotFound(response);
+          return;
+        }
+        sendJson(response, 200, proposal);
+        return;
+      }
+      if (request.method === "POST" && approvalRoute.learningProposalApplyId) {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        sendJson(
+          response,
+          200,
+          new OrgChangeService(database).markApplied(approvalRoute.learningProposalApplyId, {
+            workspace_id: context.workspaceId,
+            actor: context.actor,
+          }),
+        );
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/approvals") {
         sendJson(
           response,
@@ -962,6 +1009,7 @@ function consoleHtml(): string {
       <button data-view="agents">Agents</button>
       <button data-view="approvals">Approvals</button>
       <button data-view="promotions">Promotions</button>
+      <button data-view="learning">Learning</button>
       <button data-view="memory">Memory</button>
       <button data-view="capabilities">Capabilities</button>
       <button data-view="capabilityCalls">Capability Calls</button>
@@ -1069,6 +1117,19 @@ function consoleHtml(): string {
           ]);
         }
         if (view === "promotions") return renderRows(await request("/memory/promotions"), ["id", "status", "proposed_by", "source_memory_entry"]);
+        if (view === "learning") {
+          return renderRows(await request("/learning/proposals"), ["id", "status", "change_type", "source_signal", "confidence"], (row) => {
+            const actions = [];
+            if (row.status === "proposed" && row.review_approval_id) {
+              actions.push(actionButton("Approve", "/approvals/" + row.review_approval_id + "/approve"));
+              actions.push(actionButton("Reject", "/approvals/" + row.review_approval_id + "/reject", "danger"));
+            }
+            if (row.status === "approved") {
+              actions.push(actionButton("Apply", "/learning/proposals/" + row.id + "/apply"));
+            }
+            return actions;
+          });
+        }
         if (view === "memory") return renderJson({
           collective: await request("/memory/collective"),
           coordinator: await request("/memory/individual/" + coordinatorAgentId)

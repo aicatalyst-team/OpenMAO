@@ -8,8 +8,8 @@
 
 OpenMAO is an open-source substrate for AI-native organizations that run themselves, accountably.
 You define the mission, roles, goals, and guardrails. Agents do the work. The organization remembers
-what it learns, corrects itself when it is wrong, and earns more autonomy as it proves it can be
-trusted. The human role does not disappear; it rises from operator, to reviewer, to board.
+what it learns, proposes corrections when patterns repeat, and earns more autonomy as it proves it
+can be trusted. The human role does not disappear; it rises from operator, to reviewer, to board.
 
 Most autonomous-company demos hand a swarm of agents the keys and hope for the best. OpenMAO takes
 the opposite bet:
@@ -49,10 +49,10 @@ deterministic demo that needs no API keys, no real LLM calls, and no hosted serv
 small organization, runs a two-agent workflow, pauses for human approval, resumes from durable
 state, promotes memory only after approval, and leaves a fully inspectable event and trace history.
 
-The governance, memory, and audit foundations are real and tested. The hard part, genuine
-self-correction where an organization diagnoses failures and revises its own structure, is the open
-frontier. It is specified in [NORTH_STAR.md](NORTH_STAR.md), staged in the
-[roadmap](docs/ROADMAP.md), seamed into the architecture, and not yet built.
+The governance, memory, audit, and first institutional-learning foundations are real and tested.
+OpenMAO can detect early operational patterns and create evidence-backed improvement proposals for
+human review. The harder frontier is deeper self-correction where an organization diagnoses causes,
+versions its structure, and earns wider autonomy over a long audited track record.
 
 License: Apache-2.0.
 
@@ -138,6 +138,8 @@ npm run cli -- approvals list
 npm run cli -- approvals approve <approval_id>
 npm run cli -- approvals reject <approval_id>
 npm run cli -- events [run_id]
+npm run cli -- learning scan
+npm run cli -- learning proposals
 ```
 
 ## Documentation
@@ -145,6 +147,7 @@ npm run cli -- events [run_id]
 - [NORTH_STAR.md](NORTH_STAR.md) - why OpenMAO exists and where it is going. Start here.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - architecture and invariants.
 - [docs/ROADMAP.md](docs/ROADMAP.md) - staged path from wedge to flywheel to autonomy dial.
+- [docs/POSITIONING.md](docs/POSITIONING.md) - where OpenMAO fits in the wider ecosystem.
 - [docs/V0_SCOPE.md](docs/V0_SCOPE.md) - what the first release ships and what is deferred.
 - [docs/VOCABULARY.md](docs/VOCABULARY.md) - canonical terms.
 - [docs/DEPLOYMENT_MODES.md](docs/DEPLOYMENT_MODES.md) - local, managed, and enterprise shapes.

@@ -68,6 +68,8 @@ OpenMAO models the durable substrate under AI work:
 - **ApprovalRequest:** durable human gate for high-risk actions.
 - **MemoryEntry:** individual or collective knowledge.
 - **PromotionCandidate:** proposal to move individual memory into trusted collective memory.
+- **OrgChangeProposal:** evidence-backed proposal to review or improve roles, policies, SOPs,
+  workflows, memory, capabilities, or org graph.
 - **Event:** durable record of what happened.
 - **Trace:** run-node execution record.
 - **WorldModelSnapshot:** materialized operational view built from source state.
@@ -210,6 +212,19 @@ blocked, what needs approval, and what changed recently.
 
 Deleting a world-model snapshot must not delete truth. Rebuilding it from source state should produce
 the same operational picture.
+
+## Institutional Learning
+
+The learning loop reads OpenMAO source state and events, detects repeated operational patterns, and
+creates `OrgChangeProposal` records with evidence references. Initial local detectors cover repeated
+blockers, failed or blocked handoffs, approval bottlenecks, missing or disabled capabilities, and
+stale memory.
+
+Learning proposals are reviewed through approval state. Approval records that a proposal is accepted
+for follow-up; rejection records that the proposal was reviewed and declined. Marking a proposal
+applied is an explicit audited marker and does not silently mutate organization configuration,
+roles, policies, capabilities, memory, or org graph. Any future automatic application path must be a
+separate controlled service with its own authority, reversibility, and tests.
 
 ## Runtime Choices
 

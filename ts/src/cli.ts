@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 import { ApprovalService } from "./governance/index.js";
 import { IngestionService } from "./ingestion/index.js";
+import { LearningService } from "./learning/index.js";
+import { OrgChangeService } from "./org/index.js";
 import {
   BoundedWorkEnvelopeStore,
   type Database,
   EventStore,
   IngestionRecordStore,
+  OrgChangeProposalStore,
   RunStore,
   WorkerIdentityStore,
   WorkerOutcomeStore,
@@ -144,7 +147,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
+        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
       );
       return 0;
     }
@@ -381,6 +384,40 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
           target_work_item_id: optionValue(args, "--work"),
           payload: jsonOption(optionValue(args, "--payload")),
           idempotency_key: requireOption(args, "--idempotency-key"),
+        }),
+      );
+      return 0;
+    }
+    if (command === "learning" && subcommand === "scan") {
+      printJson(write, new LearningService(database).scan(selectedWorkspace));
+      return 0;
+    }
+    if (command === "learning" && (subcommand === "proposals" || subcommand === "list")) {
+      printJson(write, new OrgChangeProposalStore(database).listForWorkspace(selectedWorkspace));
+      return 0;
+    }
+    if (command === "learning" && subcommand === "show") {
+      const proposalId = positions[2];
+      if (!proposalId) {
+        throw new Error("proposal id is required");
+      }
+      const proposal = new OrgChangeProposalStore(database).get(proposalId);
+      if (!proposal || proposal.workspace_id !== selectedWorkspace) {
+        throw new Error(`org change proposal not found: ${proposalId}`);
+      }
+      printJson(write, proposal);
+      return 0;
+    }
+    if (command === "learning" && subcommand === "apply") {
+      const proposalId = positions[2];
+      if (!proposalId) {
+        throw new Error("proposal id is required");
+      }
+      printJson(
+        write,
+        new OrgChangeService(database).markApplied(proposalId, {
+          workspace_id: selectedWorkspace,
+          actor: "cli_operator",
         }),
       );
       return 0;
