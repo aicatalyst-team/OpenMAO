@@ -34,7 +34,7 @@ polished control plane.
 
 ## Phase 0: Substrate Skeleton
 
-**Current release. Autonomy:** `supervised`.
+**Foundational release (`v0.1.0`). Autonomy:** `supervised`.
 
 The frame of the flywheel exists; it does not yet turn. Memory promotion is manual, and
 self-correction and self-learning are seams only.
