@@ -31,7 +31,7 @@ afterEach(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-describe("v1 local SDK client", () => {
+describe("local SDK client", () => {
   it("lets a governed worker flow use services without importing stores", async () => {
     const fixture = await loadFixture();
     const workspaceId = (fixture.workspace as { id: string }).id;

@@ -44,7 +44,7 @@ afterEach(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-describe("v1 work service", () => {
+describe("work service", () => {
   it("creates accountable work, assignment events, and bounded external-worker envelopes", async () => {
     const workspace = await seedWorkspace();
     const fixture = await loadFixture();
@@ -124,7 +124,7 @@ describe("v1 work service", () => {
       work_item_id: work.id,
       decision: "accepted",
       actor: "reviewer:human",
-      notes: "Accepted for v1 substrate test.",
+      notes: "Accepted for external-worker substrate test.",
       idempotency_key: "work:governed-update:review",
     });
     const events = new EventStore(database).listForWorkspace(workspace.id);

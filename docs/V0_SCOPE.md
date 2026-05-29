@@ -85,7 +85,7 @@ operate against.
 
 The first release proves approval-before-execution with a deterministic mock provider, but it does
 not yet enforce real external actions through brokered credentials or real capability providers.
-That enforced capability path is the v1 wedge.
+That enforced capability path is the next wedge.
 
 The long-term tool model is also deferred. The first release has one mock capability, but it does
 not yet provide a real tool registry, MCP execution, SaaS connectors, browser/shell/file tools, or
@@ -99,6 +99,6 @@ It is not positioned yet as:
 - a hosted product.
 
 The long-term mission still includes organizational memory and governed self-learning. They are
-deliberately staged: the first release proves memory promotion, v1 focuses on enforced external
-actions, and later releases expand into evidence-backed memory review and human-approved
-improvement proposals.
+deliberately staged: the first release proves memory promotion, near-term releases focus on
+enforced external actions, and later releases expand into evidence-backed memory review and
+human-approved improvement proposals.

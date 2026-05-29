@@ -19,21 +19,21 @@ Patch release for public documentation and clarity fixes after the v0.3.0 releas
 
 ## v0.3.0 - 2026-05-29
 
-Stable v1.5 institutional learning loop release.
+Stable institutional learning loop release.
 
 This promotes `v0.3.0-rc.1` after implementation checks, smoke verification, and independent QA,
 Security, and Architecture review gates.
 
 ## v0.3.0-rc.1 - 2026-05-29
 
-Release candidate for the v1.5 institutional learning loop milestone.
+Release candidate for the institutional learning loop milestone.
 
 ### Added
 
 - Institutional learning scan that detects repeated blockers, failed handoffs, approval bottlenecks, missing/disabled capabilities, and stale memory.
 - Evidence-backed `OrgChangeProposal` lifecycle with proposal review approval, rejection, and explicit applied-marker events.
 - CLI, API, console, and world-model visibility for learning proposals.
-- v1.5 acceptance evidence at `docs/release/v1_5_acceptance_evidence.md`.
+- Acceptance evidence at `docs/release/v0.3.0_acceptance_evidence.md`.
 
 ### Verification
 
@@ -44,15 +44,15 @@ Release candidate for the v1.5 institutional learning loop milestone.
 
 ## v0.2.0-rc.1 - 2026-05-29
 
-Release candidate for the v1 enforced capability governance milestone.
+Release candidate for the enforced capability governance milestone.
 
 ### Added
 
 - Enforced capability governance candidate.
 - Framework-neutral reference worker demo with bounded work, approval-required side effect, outcome submission, ingestion, review, and world-model projection.
 - External-worker capability gateway checks for worker identity, capability grants, provider availability, credential handles, approval, and at-most-once execution.
-- API, CLI, and console surfaces for the v1 worker flow, capability calls, and capability results.
-- v1 acceptance evidence at `docs/release/v1_acceptance_evidence.md`.
+- API, CLI, and console surfaces for the external-worker flow, capability calls, and capability results.
+- Acceptance evidence at `docs/release/v0.2.0-rc.1_acceptance_evidence.md`.
 
 ### Verification
 
@@ -109,4 +109,4 @@ First public release candidate for OpenMAO as an organizational substrate for AI
 - `npm run hygiene:public`
 - `rm -rf .openmao && make demo && make demo-approve && rm -rf .openmao`
 
-See [docs/release/v0_acceptance_evidence.md](docs/release/v0_acceptance_evidence.md) for the release-candidate evidence map.
+See [docs/release/v0.1.0_acceptance_evidence.md](docs/release/v0.1.0_acceptance_evidence.md) for the release-candidate evidence map.

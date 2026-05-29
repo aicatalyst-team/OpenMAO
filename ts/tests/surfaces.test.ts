@@ -525,7 +525,7 @@ describe("TypeScript operator surfaces", () => {
     }
   });
 
-  it("serves v1 work substrate operations over HTTP", async () => {
+  it("serves work substrate operations over HTTP", async () => {
     const server = createServer({ dbPath, operatorToken });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
     const address = server.address() as AddressInfo;

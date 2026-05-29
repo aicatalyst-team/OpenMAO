@@ -149,7 +149,7 @@ describe("canonical TypeScript contracts", () => {
     expect(capabilityProperties).not.toHaveProperty("output_schema");
   });
 
-  it("requires v1 external-worker records to carry identity and idempotency", () => {
+  it("requires external-worker records to carry identity and idempotency", () => {
     const fixture = loadFixture();
 
     const worker = WorkerIdentitySchema.parse(fixture.worker_identity);

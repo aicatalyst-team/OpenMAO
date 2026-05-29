@@ -32,7 +32,7 @@ afterEach(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-describe("v1 reference external worker", () => {
+describe("reference external worker", () => {
   it("suspends for approval, resumes idempotently, and projects into the world model", () => {
     const suspended = runReferenceWorkerDemo(database);
     const replayedSuspension = runReferenceWorkerDemo(database);

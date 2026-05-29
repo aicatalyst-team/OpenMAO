@@ -174,7 +174,7 @@ Approval-required capabilities suspend before provider execution. Resume reloads
 
 ## Enforced Capability Boundary
 
-OpenMAO supports cooperative integration paths, but v1 should prioritize enforceable ones.
+OpenMAO supports cooperative integration paths, but near-term releases should prioritize enforceable ones.
 
 - **Cooperative path:** a worker calls the OpenMAO SDK to record work, ask for approval, or submit
   outcomes. This is useful for well-behaved workers and integrations.

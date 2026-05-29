@@ -193,7 +193,7 @@ describe("TypeScript persistence", () => {
     );
   });
 
-  it("persists v1 worker, tool, bounded envelope, outcome, and ingestion records idempotently", async () => {
+  it("persists worker, tool, bounded envelope, outcome, and ingestion records idempotently", async () => {
     const run = await seedQueuedRun();
     const fixture = await loadFixture();
     const workItem = new WorkItemStore(database).save(WorkItemSchema.parse(fixture.work_item));

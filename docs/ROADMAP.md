@@ -39,7 +39,7 @@ polished control plane.
 The frame of the flywheel exists; it does not yet turn. Memory promotion is manual, and
 self-correction and self-learning are seams only.
 
-The current release candidate provides:
+The initial public release provides:
 
 - local TypeScript runtime;
 - SQLite persistence;
@@ -50,8 +50,8 @@ The current release candidate provides:
 - API, CLI, and minimal operator console;
 - public hygiene checks for secrets and internal process leaks.
 
-See [docs/release/v0_acceptance_evidence.md](release/v0_acceptance_evidence.md) for current release
-evidence.
+See [docs/release/v0.1.0_acceptance_evidence.md](release/v0.1.0_acceptance_evidence.md) for
+initial release evidence.
 
 ## Phase 1: Enforced Capability Governance
 
@@ -61,16 +61,16 @@ This phase makes governance real: enforced, not cooperative, so the organization
 act. It is the safety foundation every later phase rests on and the first release where OpenMAO is
 useful with real agents, tools, and workflows. It is the on-ramp, not the destination.
 
-The v1 promise:
+The Phase 1 promise:
 
 > A developer can create accountable work in OpenMAO, assign it to an external worker, gate risky
 > actions before execution, resume safely after approval, review the outcome, and inspect the
 > resulting events, traces, memory, and world model.
 
-v1 is not a hosted enterprise platform. It is the first release that makes at least one
+Phase 1 is not a hosted enterprise platform. It is the first release that makes at least one
 side-effecting capability enforceable rather than merely cooperative.
 
-### v1 User Journey
+### Phase 1 User Journey
 
 1. A developer installs OpenMAO locally.
 2. They create or import accountable work with an owner, reviewer, criteria, risk, and capability grants.
@@ -85,7 +85,7 @@ side-effecting capability enforceable rather than merely cooperative.
 11. OpenMAO records events, traces, policy decisions, memory proposals, and a world-model update.
 12. The operator reviews or closes the work in OpenMAO.
 
-### v1 Required Work
+### Phase 1 Required Work
 
 **1. Work substrate.** Ship the public work-intake and assignment path: create/import work, assign
 owner and reviewer, produce bounded work envelopes, track lifecycle state, and close or review work
@@ -118,28 +118,28 @@ similar runtime, frame it as one interchangeable worker under OpenMAO authority.
 not turn that framework into OpenMAO's spine, source of truth, approval model, memory model, or
 category positioning.
 
-**6. Operator review loop.** Improve the console enough for the v1 story: runs, pending approvals,
+**6. Operator review loop.** Improve the console enough for the Phase 1 story: runs, pending approvals,
 capability calls, events, traces, artifacts, memory proposals, and world-model state should be easy
 to inspect during the external-worker demo.
 
-### v1 Acceptance Criteria
+### Phase 1 Acceptance Criteria
 
-- A clean clone can run the local v0 demo without external credentials.
+- A clean clone can run the local deterministic demo without external credentials.
 - A developer can create/import a work item, assign ownership, and hand bounded work to an external worker.
-- With configured test credentials or a mock remote provider, a developer can run the v1 external worker demo end to end.
+- With configured test credentials or a mock remote provider, a developer can run the external-worker demo end to end.
 - At least one external worker integrates without becoming the source of OpenMAO truth.
 - Replacing the reference worker runtime would not change OpenMAO's work, authority, approval, memory, event, or world-model contracts.
 - At least one side-effecting capability is enforceable through an OpenMAO-managed provider or credential broker.
-- The external worker cannot execute that side effect with raw credentials in the default v1 demo path.
+- The external worker cannot execute that side effect with raw credentials in the default external-worker demo path.
 - Approval resume works after process restart and executes the approved action at most once.
 - SDK, gateway, and ingestion writes require workspace identity, actor/source identity, and idempotency keys.
 - Raw secrets never appear in events, traces, capability-call payloads, artifacts, or logs.
 - The world model reflects external-worker activity through rebuildable projection rules.
 - The operator can inspect what happened, who/what requested it, which policy applied, who approved it, how the work state changed, and what changed afterward.
 
-### v1 Non-Goals
+### Phase 1 Non-Goals
 
-v1 does not ship a hosted SaaS control plane, multi-tenant enterprise authentication, a full
+Phase 1 does not ship a hosted SaaS control plane, multi-tenant enterprise authentication, a full
 provider marketplace, compatibility adapters for every agent framework, execution-framework
 internal checkpointing/retry semantics, broad credential brokering for every external system,
 unreviewed autonomous self-improvement, or broad sandboxed browser/shell/file execution.
@@ -186,7 +186,7 @@ Hard constraints:
 - every proposal and decision is traceable and reversible;
 - rejected proposals remain useful as organizational memory rather than disappearing.
 
-Initial v1.5 scope:
+Initial institutional-learning scope:
 
 - deterministic local detectors for repeated blockers, failed handoffs, stale memory, missing or
   disabled capabilities, and approval bottlenecks;

@@ -48,7 +48,7 @@ afterEach(() => {
   rmSync(tmpRoot, { recursive: true, force: true });
 });
 
-describe("v1 ingestion service", () => {
+describe("ingestion service", () => {
   it("records external observations idempotently and projects them into the world model", async () => {
     const fixture = await loadFixture();
     const workspaceId = (fixture.workspace as { id: string }).id;
