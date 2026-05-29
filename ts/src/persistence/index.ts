@@ -18,6 +18,8 @@ export {
   CapabilityResultConflictError,
   CapabilityResultStore,
   CapabilityStore,
+  ToolConflictError,
+  ToolStore,
 } from "./capabilities.js";
 export { type Checkpoint, CheckpointSchema, CheckpointStore } from "./checkpoints.js";
 export { Database } from "./database.js";
@@ -62,10 +64,16 @@ export {
 } from "./runs.js";
 export { initializeSchema, SCHEMA_SQL } from "./schema.js";
 export {
+  BoundedWorkEnvelopeConflictError,
+  BoundedWorkEnvelopeStore,
   GoalConflictError,
   GoalStore,
+  IngestionRecordConflictError,
+  IngestionRecordStore,
   TaskEnvelopeConflictError,
   TaskEnvelopeStore,
+  WorkerIdentityConflictError,
+  WorkerIdentityStore,
   WorkItemConflictError,
   WorkItemStore,
 } from "./work.js";

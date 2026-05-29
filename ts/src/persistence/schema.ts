@@ -32,6 +32,24 @@ CREATE TABLE IF NOT EXISTS agents (
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
 );
 
+CREATE TABLE IF NOT EXISTS tools (
+  name TEXT NOT NULL,
+  workspace_id TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  PRIMARY KEY (workspace_id, name),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
+);
+
+CREATE TABLE IF NOT EXISTS worker_identities (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_identities_workspace_id
+ON worker_identities(workspace_id, id);
+
 CREATE TABLE IF NOT EXISTS goals (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -77,6 +95,25 @@ CREATE TABLE IF NOT EXISTS task_envelopes (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_task_envelopes_workspace_id
 ON task_envelopes(workspace_id, id);
+
+CREATE TABLE IF NOT EXISTS bounded_work_envelopes (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  work_item_id TEXT NOT NULL,
+  run_id TEXT,
+  worker_id TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+  FOREIGN KEY (workspace_id, work_item_id) REFERENCES work_items(workspace_id, id),
+  FOREIGN KEY (workspace_id, run_id) REFERENCES runs(workspace_id, id),
+  FOREIGN KEY (workspace_id, worker_id) REFERENCES worker_identities(workspace_id, id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bounded_work_envelopes_workspace_id
+ON bounded_work_envelopes(workspace_id, id);
+
+CREATE INDEX IF NOT EXISTS idx_bounded_work_envelopes_work_item
+ON bounded_work_envelopes(workspace_id, work_item_id);
 
 CREATE TABLE IF NOT EXISTS checkpoints (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,6 +199,25 @@ WHERE idempotency_key IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_events_run_seq
 ON events(run_id, run_seq)
 WHERE run_id IS NOT NULL AND run_seq IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS ingestion_records (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  target_run_id TEXT,
+  target_work_item_id TEXT,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+  FOREIGN KEY (workspace_id, target_run_id) REFERENCES runs(workspace_id, id),
+  FOREIGN KEY (workspace_id, target_work_item_id) REFERENCES work_items(workspace_id, id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ingestion_records_workspace_idempotency
+ON ingestion_records(workspace_id, idempotency_key);
+
+CREATE INDEX IF NOT EXISTS idx_ingestion_records_target_work
+ON ingestion_records(workspace_id, target_work_item_id);
 
 CREATE TABLE IF NOT EXISTS traces (
   id TEXT PRIMARY KEY,
@@ -313,9 +369,9 @@ CREATE TABLE IF NOT EXISTS active_run_locks (
 );
 
 INSERT OR IGNORE INTO schema_version (version, applied_at)
-VALUES (1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 `;
 
 export function initializeSchema(connection: SqliteDatabase): void {

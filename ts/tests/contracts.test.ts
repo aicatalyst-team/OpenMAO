@@ -7,13 +7,17 @@ import {
   AgentSchema,
   ApprovalRequestSchema,
   ArtifactSchema,
+  BoundedWorkEnvelopeSchema,
   CapabilityCallSchema,
+  CapabilityProviderRefSchema,
   CapabilityResultSchema,
   CapabilitySchema,
   canonicalSchemaBundle,
   EvaluationSchema,
   EventSchema,
+  ExternalActorRefSchema,
   GoalSchema,
+  IngestionRecordSchema,
   MemoryEntrySchema,
   ModelRequestSchema,
   ModelResponseSchema,
@@ -28,10 +32,12 @@ import {
   RoleSchema,
   RunSchema,
   TaskEnvelopeSchema,
+  ToolSchema,
   TraceSchema,
   utcNow,
   validateId,
   validateUtcTimestamp,
+  WorkerIdentitySchema,
   WorkItemSchema,
   WorkspaceSchema,
   WorldModelSnapshotSchema,
@@ -56,10 +62,13 @@ describe("canonical TypeScript contracts", () => {
     for (const agent of fixture.agents as unknown[]) {
       AgentSchema.parse(agent);
     }
+    ToolSchema.parse(fixture.tool);
+    WorkerIdentitySchema.parse(fixture.worker_identity);
     GoalSchema.parse(fixture.goal);
     WorkItemSchema.parse(fixture.work_item);
     RunSchema.parse(fixture.run);
     TaskEnvelopeSchema.parse(fixture.task_envelope);
+    BoundedWorkEnvelopeSchema.parse(fixture.bounded_work_envelope);
     AgentOutcomeSchema.parse(fixture.agent_outcome);
     CapabilitySchema.parse(fixture.capability);
     CapabilityCallSchema.parse(fixture.capability_call);
@@ -72,6 +81,7 @@ describe("canonical TypeScript contracts", () => {
     ApprovalRequestSchema.parse(fixture.approval_request);
     EvaluationSchema.parse(fixture.evaluation);
     EventSchema.parse(fixture.event);
+    IngestionRecordSchema.parse(fixture.ingestion_record);
     TraceSchema.parse(fixture.trace);
     NodeEffectSchema.parse(fixture.node_effect);
     ModelRequestSchema.parse(fixture.model_request);
@@ -131,8 +141,71 @@ describe("canonical TypeScript contracts", () => {
 
     expect(capabilityProperties).toHaveProperty("canonical_input_schema");
     expect(capabilityProperties).toHaveProperty("canonical_output_schema");
+    expect(capabilityProperties).toHaveProperty("credential_handle_required");
+    expect(capabilityProperties).toHaveProperty("side_effecting");
     expect(capabilityProperties).not.toHaveProperty("input_schema");
     expect(capabilityProperties).not.toHaveProperty("output_schema");
+  });
+
+  it("requires v1 external-worker records to carry identity and idempotency", () => {
+    const fixture = loadFixture();
+
+    const worker = WorkerIdentitySchema.parse(fixture.worker_identity);
+    const envelope = BoundedWorkEnvelopeSchema.parse(fixture.bounded_work_envelope);
+    const ingestion = IngestionRecordSchema.parse(fixture.ingestion_record);
+
+    expect(envelope.worker_id).toBe(worker.id);
+    expect(envelope.issued_by.actor_type).toBe("agent");
+    expect(ingestion.actor.actor_type).toBe("worker");
+    expect(ingestion.idempotency_key).toContain(worker.id);
+
+    expect(() =>
+      IngestionRecordSchema.parse({
+        ...(fixture.ingestion_record as Record<string, unknown>),
+        idempotency_key: undefined,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      BoundedWorkEnvelopeSchema.parse({
+        ...(fixture.bounded_work_envelope as Record<string, unknown>),
+        issued_by: { actor_id: worker.id },
+      }),
+    ).toThrow();
+  });
+
+  it("models enforced capability metadata without raw credential values", () => {
+    const fixture = loadFixture();
+    const providerRef = CapabilityProviderRefSchema.parse({
+      provider: "mock.remote",
+      tool_name: "mock.research",
+      capability_name: "mock.research_lookup",
+      credential_handle: "cred_mock_research_readonly",
+      side_effecting: true,
+      risk_level: "high",
+      audit_payload_schema: { type: "object" },
+    });
+    const actor = ExternalActorRefSchema.parse({
+      actor_type: "worker",
+      actor_id: (fixture.worker_identity as { id: string }).id,
+    });
+    const call = CapabilityCallSchema.parse({
+      ...(fixture.capability_call as Record<string, unknown>),
+      external_actor: actor,
+      credential_handle: providerRef.credential_handle,
+      side_effecting: providerRef.side_effecting,
+      risk_level: providerRef.risk_level,
+    });
+
+    expect(call.credential_handle).toBe("cred_mock_research_readonly");
+    expect(JSON.stringify(call)).not.toMatch(/secret|token|password/i);
+
+    const defs = canonicalSchemaBundle().$defs as Record<
+      string,
+      { properties: Record<string, unknown> }
+    >;
+    expect(defs.CapabilityProviderRef?.properties).not.toHaveProperty("credential_value");
+    expect(defs.CapabilityCall?.properties).not.toHaveProperty("credential_value");
   });
 
   it("writes the canonical schema artifact from TypeScript", () => {

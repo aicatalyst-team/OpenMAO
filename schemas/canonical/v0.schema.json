@@ -27,6 +27,36 @@
       },
       "additionalProperties": false
     },
+    "ExternalActorRef": {
+      "type": "object",
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "enum": [
+            "agent",
+            "worker",
+            "operator",
+            "system",
+            "provider"
+          ]
+        },
+        "actor_id": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "actor_type",
+        "actor_id"
+      ],
+      "additionalProperties": false
+    },
     "MemoryScope": {
       "type": "object",
       "properties": {
@@ -215,6 +245,51 @@
           "default": []
         }
       },
+      "additionalProperties": false
+    },
+    "CapabilityProviderRef": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "tool_name": {
+          "type": "string"
+        },
+        "capability_name": {
+          "type": "string"
+        },
+        "credential_handle": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "side_effecting": {
+          "type": "boolean",
+          "default": false
+        },
+        "risk_level": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "low"
+        },
+        "audit_payload_schema": {
+          "type": "object",
+          "additionalProperties": {},
+          "default": {}
+        }
+      },
+      "required": [
+        "provider",
+        "tool_name",
+        "capability_name"
+      ],
       "additionalProperties": false
     },
     "Workspace": {
@@ -450,6 +525,167 @@
         "workspace_id",
         "role_id",
         "identity"
+      ],
+      "additionalProperties": false
+    },
+    "Tool": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "workspace_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "mock",
+            "github",
+            "email",
+            "slack",
+            "mcp",
+            "http_api",
+            "database",
+            "browser",
+            "shell",
+            "filesystem",
+            "internal_api",
+            "other"
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "allowed_scopes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "credential_policy": {
+          "type": "string",
+          "enum": [
+            "none",
+            "handle_required",
+            "external"
+          ],
+          "default": "none"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "enabled",
+            "disabled"
+          ],
+          "default": "enabled"
+        }
+      },
+      "required": [
+        "name",
+        "workspace_id",
+        "kind",
+        "description",
+        "provider"
+      ],
+      "additionalProperties": false
+    },
+    "WorkerIdentity": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "workspace_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "runtime": {
+          "type": "string"
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "default": "openmao"
+            },
+            "external_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "external_url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            }
+          },
+          "additionalProperties": false,
+          "default": {
+            "provider": "openmao",
+            "external_id": null,
+            "external_url": null
+          }
+        },
+        "role_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "allowed_capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {},
+          "default": {}
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "enabled",
+            "disabled"
+          ],
+          "default": "enabled"
+        }
+      },
+      "required": [
+        "id",
+        "workspace_id",
+        "name",
+        "runtime"
       ],
       "additionalProperties": false
     },
@@ -790,6 +1026,124 @@
       ],
       "additionalProperties": false
     },
+    "BoundedWorkEnvelope": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "workspace_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "work_item_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "worker_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "issued_by": {
+          "type": "object",
+          "properties": {
+            "actor_type": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "worker",
+                "operator",
+                "system",
+                "provider"
+              ]
+            },
+            "actor_id": {
+              "type": "string"
+            },
+            "display_name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "actor_type",
+            "actor_id"
+          ],
+          "additionalProperties": false
+        },
+        "objective": {
+          "type": "string"
+        },
+        "context_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "allowed_capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "approval_gates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": {},
+          "default": {}
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|\\+00:00)$"
+        },
+        "expires_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|\\+00:00)$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "workspace_id",
+        "work_item_id",
+        "worker_id",
+        "issued_by",
+        "objective",
+        "created_at"
+      ],
+      "additionalProperties": false
+    },
     "AgentOutcome": {
       "type": "object",
       "properties": {
@@ -913,6 +1267,13 @@
         "description": {
           "type": "string"
         },
+        "tool_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
         "canonical_input_schema": {
           "type": "object",
           "additionalProperties": {}
@@ -927,6 +1288,14 @@
             "type": "string"
           },
           "default": []
+        },
+        "side_effecting": {
+          "type": "boolean",
+          "default": false
+        },
+        "credential_handle_required": {
+          "type": "boolean",
+          "default": false
         },
         "default_permission": {
           "type": "string",
@@ -975,9 +1344,63 @@
         "requested_by": {
           "type": "string"
         },
+        "external_actor": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "actor_type": {
+                  "type": "string",
+                  "enum": [
+                    "agent",
+                    "worker",
+                    "operator",
+                    "system",
+                    "provider"
+                  ]
+                },
+                "actor_id": {
+                  "type": "string"
+                },
+                "display_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "default": null
+                }
+              },
+              "required": [
+                "actor_type",
+                "actor_id"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "task_id": {
           "type": "string",
           "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "credential_handle": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "side_effecting": {
+          "type": "boolean",
+          "default": false
+        },
+        "audit_payload": {
+          "type": "object",
+          "additionalProperties": {},
+          "default": {}
         },
         "risk_level": {
           "type": "string",
@@ -1715,6 +2138,129 @@
         "kind",
         "actor",
         "timestamp"
+      ],
+      "additionalProperties": false
+    },
+    "IngestionRecord": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "workspace_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "source": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string",
+              "default": "openmao"
+            },
+            "external_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "external_url": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            }
+          },
+          "additionalProperties": false
+        },
+        "actor": {
+          "type": "object",
+          "properties": {
+            "actor_type": {
+              "type": "string",
+              "enum": [
+                "agent",
+                "worker",
+                "operator",
+                "system",
+                "provider"
+              ]
+            },
+            "actor_id": {
+              "type": "string"
+            },
+            "display_name": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            }
+          },
+          "required": [
+            "actor_type",
+            "actor_id"
+          ],
+          "additionalProperties": false
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "event",
+            "trace",
+            "outcome",
+            "artifact",
+            "memory_proposal"
+          ]
+        },
+        "target_run_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "target_work_item_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": {},
+          "default": {}
+        },
+        "occurred_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|\\+00:00)$"
+        }
+      },
+      "required": [
+        "id",
+        "workspace_id",
+        "source",
+        "actor",
+        "kind",
+        "idempotency_key",
+        "occurred_at"
       ],
       "additionalProperties": false
     },

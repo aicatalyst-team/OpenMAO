@@ -5,6 +5,8 @@ import {
   type CapabilityResult,
   CapabilityResultSchema,
   CapabilitySchema,
+  type Tool,
+  ToolSchema,
 } from "../contracts/index.js";
 import type { Database } from "./database.js";
 import { dumpJson, jsonEqual } from "./serialization.js";
@@ -14,6 +16,45 @@ type PayloadRow = { payload_json: string };
 export class CapabilityConflictError extends Error {}
 export class CapabilityCallConflictError extends Error {}
 export class CapabilityResultConflictError extends Error {}
+export class ToolConflictError extends Error {}
+
+export class ToolStore {
+  constructor(private readonly database: Database) {}
+
+  save(tool: Tool): Tool {
+    const parsed = ToolSchema.parse(tool);
+    return this.database.transaction(() => {
+      const existing = this.get(parsed.workspace_id, parsed.name);
+      if (existing) {
+        if (jsonEqual(existing, parsed)) {
+          return existing;
+        }
+        throw new ToolConflictError(`tool already exists: ${parsed.workspace_id}/${parsed.name}`);
+      }
+
+      this.database.connection
+        .prepare("INSERT INTO tools (workspace_id, name, payload_json) VALUES (?, ?, ?)")
+        .run(parsed.workspace_id, parsed.name, dumpJson(parsed));
+      return parsed;
+    });
+  }
+
+  get(workspaceId: string, name: string): Tool | null {
+    const row = this.database.connection
+      .prepare("SELECT payload_json FROM tools WHERE workspace_id = ? AND name = ?")
+      .get(workspaceId, name) as PayloadRow | undefined;
+
+    return row ? ToolSchema.parse(JSON.parse(row.payload_json)) : null;
+  }
+
+  listForWorkspace(workspaceId: string): Tool[] {
+    const rows = this.database.connection
+      .prepare("SELECT payload_json FROM tools WHERE workspace_id = ? ORDER BY name")
+      .all(workspaceId) as PayloadRow[];
+
+    return rows.map((row) => ToolSchema.parse(JSON.parse(row.payload_json)));
+  }
+}
 
 export class CapabilityStore {
   constructor(private readonly database: Database) {}

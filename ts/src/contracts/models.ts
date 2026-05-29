@@ -23,6 +23,14 @@ export const ExternalSourceSchema = z
   })
   .strict();
 
+export const ExternalActorRefSchema = z
+  .object({
+    actor_type: z.enum(["agent", "worker", "operator", "system", "provider"]),
+    actor_id: z.string(),
+    display_name: z.string().nullable().default(null),
+  })
+  .strict();
+
 export const MemoryScopeSchema = z
   .object({
     read: z.array(z.string()).default([]),
@@ -125,6 +133,51 @@ export const AgentSchema = z
   })
   .strict();
 
+export const ToolSchema = z
+  .object({
+    name: z.string(),
+    workspace_id: CanonicalIdSchema,
+    kind: z.enum([
+      "mock",
+      "github",
+      "email",
+      "slack",
+      "mcp",
+      "http_api",
+      "database",
+      "browser",
+      "shell",
+      "filesystem",
+      "internal_api",
+      "other",
+    ]),
+    description: z.string(),
+    provider: z.string(),
+    allowed_scopes: z.array(z.string()).default([]),
+    credential_policy: z.enum(["none", "handle_required", "external"]).default("none"),
+    status: z.enum(["enabled", "disabled"]).default("enabled"),
+  })
+  .strict();
+
+export const WorkerIdentitySchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    name: z.string(),
+    runtime: z.string(),
+    version: z.string().nullable().default(null),
+    source: ExternalSourceSchema.default({
+      provider: "openmao",
+      external_id: null,
+      external_url: null,
+    }),
+    role_id: CanonicalIdSchema.nullable().default(null),
+    allowed_capabilities: z.array(z.string()).default([]),
+    metadata: recordSchema.default({}),
+    status: z.enum(["enabled", "disabled"]).default("enabled"),
+  })
+  .strict();
+
 export const GoalSchema = z
   .object({
     id: CanonicalIdSchema,
@@ -190,6 +243,24 @@ export const TaskEnvelopeSchema = z
   })
   .strict();
 
+export const BoundedWorkEnvelopeSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    work_item_id: CanonicalIdSchema,
+    run_id: CanonicalIdSchema.nullable().default(null),
+    worker_id: CanonicalIdSchema,
+    issued_by: ExternalActorRefSchema,
+    objective: z.string(),
+    context_refs: z.array(z.string()).default([]),
+    allowed_capabilities: z.array(z.string()).default([]),
+    approval_gates: z.array(z.string()).default([]),
+    input: recordSchema.default({}),
+    created_at: UtcTimestampSchema,
+    expires_at: UtcTimestampSchema.nullable().default(null),
+  })
+  .strict();
+
 export const AgentOutcomeSchema = z
   .object({
     task_id: CanonicalIdSchema,
@@ -214,12 +285,27 @@ export const CapabilitySchema = z
     name: z.string(),
     workspace_id: CanonicalIdSchema,
     description: z.string(),
+    tool_name: z.string().nullable().default(null),
     canonical_input_schema: recordSchema,
     canonical_output_schema: recordSchema,
     providers: z.array(z.string()).default([]),
+    side_effecting: z.boolean().default(false),
+    credential_handle_required: z.boolean().default(false),
     default_permission: z
       .enum(["enabled", "approval_required", "disabled"])
       .default("approval_required"),
+  })
+  .strict();
+
+export const CapabilityProviderRefSchema = z
+  .object({
+    provider: z.string(),
+    tool_name: z.string(),
+    capability_name: z.string(),
+    credential_handle: z.string().nullable().default(null),
+    side_effecting: z.boolean().default(false),
+    risk_level: z.enum(["low", "medium", "high"]).default("low"),
+    audit_payload_schema: recordSchema.default({}),
   })
   .strict();
 
@@ -232,7 +318,11 @@ export const CapabilityCallSchema = z
     provider: z.string(),
     input: recordSchema,
     requested_by: z.string(),
+    external_actor: ExternalActorRefSchema.nullable().default(null),
     task_id: CanonicalIdSchema,
+    credential_handle: z.string().nullable().default(null),
+    side_effecting: z.boolean().default(false),
+    audit_payload: recordSchema.default({}),
     risk_level: z.enum(["low", "medium", "high"]).default("low"),
     idempotency_key: z.string(),
   })
@@ -364,6 +454,21 @@ export const EventSchema = z
   })
   .strict();
 
+export const IngestionRecordSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    source: ExternalSourceSchema,
+    actor: ExternalActorRefSchema,
+    kind: z.enum(["event", "trace", "outcome", "artifact", "memory_proposal"]),
+    target_run_id: CanonicalIdSchema.nullable().default(null),
+    target_work_item_id: CanonicalIdSchema.nullable().default(null),
+    idempotency_key: z.string(),
+    payload: recordSchema.default({}),
+    occurred_at: UtcTimestampSchema,
+  })
+  .strict();
+
 export const TraceSchema = z
   .object({
     id: CanonicalIdSchema,
@@ -475,10 +580,13 @@ export const canonicalModelSchemas = {
   Organization: OrganizationSchema,
   Role: RoleSchema,
   Agent: AgentSchema,
+  Tool: ToolSchema,
+  WorkerIdentity: WorkerIdentitySchema,
   Goal: GoalSchema,
   WorkItem: WorkItemSchema,
   Run: RunSchema,
   TaskEnvelope: TaskEnvelopeSchema,
+  BoundedWorkEnvelope: BoundedWorkEnvelopeSchema,
   AgentOutcome: AgentOutcomeSchema,
   Capability: CapabilitySchema,
   CapabilityCall: CapabilityCallSchema,
@@ -491,6 +599,7 @@ export const canonicalModelSchemas = {
   ApprovalRequest: ApprovalRequestSchema,
   Evaluation: EvaluationSchema,
   Event: EventSchema,
+  IngestionRecord: IngestionRecordSchema,
   Trace: TraceSchema,
   NodeEffect: NodeEffectSchema,
   ModelRequest: ModelRequestSchema,
@@ -501,12 +610,14 @@ export const canonicalModelSchemas = {
 
 export const schemaDefinitions = {
   ExternalSource: ExternalSourceSchema,
+  ExternalActorRef: ExternalActorRefSchema,
   MemoryScope: MemoryScopeSchema,
   Provenance: ProvenanceSchema,
   Cost: CostSchema,
   ArtifactRef: ArtifactRefSchema,
   ApprovalPayload: ApprovalPayloadSchema,
   EventPayload: EventPayloadSchema,
+  CapabilityProviderRef: CapabilityProviderRefSchema,
   ...canonicalModelSchemas,
 } as const;
 
@@ -514,6 +625,7 @@ export type PolicyOutcome = z.infer<typeof PolicyOutcomeSchema>;
 export type RunStatus = z.infer<typeof RunStatusSchema>;
 export type CanonicalModelName = keyof typeof canonicalModelSchemas;
 export type ExternalSource = z.infer<typeof ExternalSourceSchema>;
+export type ExternalActorRef = z.infer<typeof ExternalActorRefSchema>;
 export type MemoryScope = z.infer<typeof MemoryScopeSchema>;
 export type Provenance = z.infer<typeof ProvenanceSchema>;
 export type Cost = z.infer<typeof CostSchema>;
@@ -524,12 +636,16 @@ export type Workspace = z.infer<typeof WorkspaceSchema>;
 export type Organization = z.infer<typeof OrganizationSchema>;
 export type Role = z.infer<typeof RoleSchema>;
 export type Agent = z.infer<typeof AgentSchema>;
+export type Tool = z.infer<typeof ToolSchema>;
+export type WorkerIdentity = z.infer<typeof WorkerIdentitySchema>;
 export type Goal = z.infer<typeof GoalSchema>;
 export type WorkItem = z.infer<typeof WorkItemSchema>;
 export type Run = z.infer<typeof RunSchema>;
 export type TaskEnvelope = z.infer<typeof TaskEnvelopeSchema>;
+export type BoundedWorkEnvelope = z.infer<typeof BoundedWorkEnvelopeSchema>;
 export type AgentOutcome = z.infer<typeof AgentOutcomeSchema>;
 export type Capability = z.infer<typeof CapabilitySchema>;
+export type CapabilityProviderRef = z.infer<typeof CapabilityProviderRefSchema>;
 export type CapabilityCall = z.infer<typeof CapabilityCallSchema>;
 export type CapabilityResult = z.infer<typeof CapabilityResultSchema>;
 export type MemoryEntry = z.infer<typeof MemoryEntrySchema>;
@@ -540,6 +656,7 @@ export type PolicyDecision = z.infer<typeof PolicyDecisionSchema>;
 export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
 export type Evaluation = z.infer<typeof EvaluationSchema>;
 export type Event = z.infer<typeof EventSchema>;
+export type IngestionRecord = z.infer<typeof IngestionRecordSchema>;
 export type Trace = z.infer<typeof TraceSchema>;
 export type NodeEffect = z.infer<typeof NodeEffectSchema>;
 export type ModelRequest = z.infer<typeof ModelRequestSchema>;

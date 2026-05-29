@@ -8,21 +8,32 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   type ApprovalRequest,
   ApprovalRequestSchema,
+  BoundedWorkEnvelopeSchema,
   EventPayloadSchema,
+  IngestionRecordSchema,
   NodeEffectSchema,
   type Run,
   RunSchema,
+  ToolSchema,
+  WorkerIdentitySchema,
+  WorkItemSchema,
   type Workspace,
   WorkspaceSchema,
 } from "../src/contracts/index.js";
 import {
   ActiveRunExistsError,
+  BoundedWorkEnvelopeStore,
   Database,
   EventIdempotencyConflictError,
   EventStore,
+  IngestionRecordConflictError,
+  IngestionRecordStore,
   InvalidRunTransitionError,
   NodeEffectStore,
   RunStore,
+  ToolStore,
+  WorkerIdentityStore,
+  WorkItemStore,
   WorkspaceConflictError,
   WorkspaceStore,
 } from "../src/persistence/index.js";
@@ -136,10 +147,13 @@ describe("TypeScript persistence", () => {
         "organizations",
         "roles",
         "agents",
+        "tools",
+        "worker_identities",
         "goals",
         "work_items",
         "runs",
         "task_envelopes",
+        "bounded_work_envelopes",
         "checkpoints",
         "approval_requests",
         "policies",
@@ -154,12 +168,13 @@ describe("TypeScript persistence", () => {
         "world_model_snapshots",
         "org_change_proposals",
         "events",
+        "ingestion_records",
         "traces",
         "node_effects",
         "active_run_locks",
       ]),
     );
-    expect(userVersion).toBe(1);
+    expect(userVersion).toBe(2);
   });
 
   it("saves workspaces idempotently and rejects conflicting overwrites", async () => {
@@ -172,6 +187,42 @@ describe("TypeScript persistence", () => {
     expect(() => store.save({ ...workspace, name: "Changed Workspace" })).toThrow(
       WorkspaceConflictError,
     );
+  });
+
+  it("persists v1 worker, tool, bounded envelope, and ingestion records idempotently", async () => {
+    const run = await seedQueuedRun();
+    const fixture = await loadFixture();
+    const workItem = new WorkItemStore(database).save(WorkItemSchema.parse(fixture.work_item));
+    const tool = ToolSchema.parse(fixture.tool);
+    const worker = WorkerIdentitySchema.parse(fixture.worker_identity);
+    const envelope = BoundedWorkEnvelopeSchema.parse(fixture.bounded_work_envelope);
+    const ingestion = IngestionRecordSchema.parse(fixture.ingestion_record);
+
+    const tools = new ToolStore(database);
+    const workers = new WorkerIdentityStore(database);
+    const envelopes = new BoundedWorkEnvelopeStore(database);
+    const ingestionRecords = new IngestionRecordStore(database);
+
+    expect(tools.save(tool)).toEqual(tool);
+    expect(workers.save(worker)).toEqual(worker);
+    expect(envelopes.save(envelope)).toEqual(envelope);
+    expect(ingestionRecords.record(ingestion)).toEqual(ingestion);
+
+    expect(envelope.run_id).toBe(run.id);
+    expect(tools.listForWorkspace(tool.workspace_id)).toEqual([tool]);
+    expect(workers.listForWorkspace(worker.workspace_id)).toEqual([worker]);
+    expect(envelopes.listForWorkItem(workItem.id)).toEqual([envelope]);
+    expect(ingestionRecords.listForWorkItem(workItem.id)).toEqual([ingestion]);
+    expect(ingestionRecords.record(ingestion)).toEqual(ingestion);
+    expect(() =>
+      ingestionRecords.record(
+        IngestionRecordSchema.parse({
+          ...ingestion,
+          id: "ingest_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          payload: { changed: true },
+        }),
+      ),
+    ).toThrow(IngestionRecordConflictError);
   });
 
   it("allocates event sequences, enforces idempotency, and keeps events append-only", async () => {

@@ -111,10 +111,46 @@
     "providers": [
       "mock"
     ],
+    "side_effecting": false,
+    "tool_name": "mock.research",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "tool": {
+    "allowed_scopes": [
+      "read:seeded_findings"
+    ],
+    "credential_policy": "none",
+    "description": "Deterministic seeded lookup tool for local demos.",
+    "kind": "mock",
+    "name": "mock.research",
+    "provider": "mock",
+    "status": "enabled",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "worker_identity": {
+    "allowed_capabilities": [
+      "mock.research_lookup"
+    ],
+    "id": "worker_12121212121212121212121212121212",
+    "metadata": {
+      "demo": true
+    },
+    "name": "Demo External Worker",
+    "role_id": "role_44444444444444444444444444444444",
+    "runtime": "openmao.example.worker",
+    "source": {
+      "external_id": "demo-worker",
+      "provider": "openmao"
+    },
+    "status": "enabled",
+    "version": "0.1.0",
     "workspace_id": "ws_11111111111111111111111111111111"
   },
   "capability_call": {
     "capability_name": "mock.research_lookup",
+    "audit_payload": {
+      "purpose": "seeded demo lookup"
+    },
     "id": "capcall_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "idempotency_key": "run_99999999999999999999999999999999:research_lookup",
     "input": {
@@ -124,6 +160,7 @@
     "requested_by": "agent_66666666666666666666666666666666",
     "risk_level": "low",
     "run_id": "run_99999999999999999999999999999999",
+    "side_effecting": false,
     "task_id": "task_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "workspace_id": "ws_11111111111111111111111111111111"
   },
@@ -168,6 +205,27 @@
     "run_seq": 8,
     "seq": 12,
     "timestamp": "2026-05-27T15:20:08Z",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "ingestion_record": {
+    "actor": {
+      "actor_id": "worker_12121212121212121212121212121212",
+      "actor_type": "worker",
+      "display_name": "Demo External Worker"
+    },
+    "id": "ingest_34343434343434343434343434343434",
+    "idempotency_key": "worker_12121212121212121212121212121212:trace:approval_requested",
+    "kind": "trace",
+    "occurred_at": "2026-05-27T15:20:08Z",
+    "payload": {
+      "trace_id": "trace_33333333333333333333333333333333"
+    },
+    "source": {
+      "external_id": "demo-worker",
+      "provider": "openmao"
+    },
+    "target_run_id": "run_99999999999999999999999999999999",
+    "target_work_item_id": "work_88888888888888888888888888888888",
     "workspace_id": "ws_11111111111111111111111111111111"
   },
   "goal": {
@@ -350,6 +408,30 @@
     "objective": "Gather seeded information for onboarding.",
     "run_id": "run_99999999999999999999999999999999",
     "to_agent": "agent_66666666666666666666666666666666",
+    "work_item_id": "work_88888888888888888888888888888888",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
+  "bounded_work_envelope": {
+    "allowed_capabilities": [
+      "mock.research_lookup"
+    ],
+    "approval_gates": [],
+    "context_refs": [
+      "mem_dddddddddddddddddddddddddddddddd"
+    ],
+    "created_at": "2026-05-27T15:20:02Z",
+    "id": "envelope_56565656565656565656565656565656",
+    "input": {
+      "topic": "onboarding brief"
+    },
+    "issued_by": {
+      "actor_id": "agent_55555555555555555555555555555555",
+      "actor_type": "agent",
+      "display_name": "Coordinator Agent"
+    },
+    "objective": "Gather seeded information for onboarding.",
+    "run_id": "run_99999999999999999999999999999999",
+    "worker_id": "worker_12121212121212121212121212121212",
     "work_item_id": "work_88888888888888888888888888888888",
     "workspace_id": "ws_11111111111111111111111111111111"
   },
