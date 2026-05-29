@@ -429,6 +429,40 @@ describe("TypeScript governance and capabilities", () => {
     expect(provider.executedCallIds).toEqual([call.id]);
   });
 
+  it("requires approval before executing high-risk enabled capabilities", async () => {
+    const run = await seedRunningRun();
+    await seedCapability("enabled");
+    const registry = await orgRegistry();
+    const provider = new MockProvider();
+    const service = new CapabilityRegistryService(
+      database,
+      new GovernanceService(database, registry),
+      [provider],
+    );
+    const call = await capabilityCall(run, {
+      id: "capcall_88888888888888888888888888888888",
+      idempotency_key: `${run.id}:high_risk`,
+      risk_level: "high",
+    });
+
+    const suspendedInvocation = service.invoke(call);
+
+    expect(suspendedInvocation.decision.outcome).toBe("require_approval");
+    expect(suspendedInvocation.decision.reason).toContain("High-risk");
+    expect(suspendedInvocation.result).toBeUndefined();
+    expect(provider.executedCallIds).toEqual([]);
+
+    new ApprovalService(database).approve(suspendedInvocation.approval_id ?? "", {
+      workspace_id: run.workspace_id,
+    });
+    const resumedInvocation = service.resumeApprovedCall(suspendedInvocation.approval_id ?? "", {
+      workspace_id: run.workspace_id,
+    });
+
+    expect(resumedInvocation.result?.status).toBe("ok");
+    expect(provider.executedCallIds).toEqual([call.id]);
+  });
+
   it("blocks ungranted capabilities without provider execution", async () => {
     const run = await seedRunningRun();
     await seedCapability("enabled");

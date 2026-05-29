@@ -1,29 +1,52 @@
 # OpenMAO Architecture
 
-OpenMAO is an organizational control layer for AI-native work. Agents, tools, workflows, and
-external runtimes may execute bounded work, but OpenMAO remains the system of record for authority,
-policy, approvals, memory promotion, event semantics, auditability, and the world model.
+OpenMAO is the organizational substrate for AI-native work. It is where work items, ownership,
+authority, approvals, memory consequences, event history, and the world model live.
+
+Agents, tools, workflows, and external runtimes may execute bounded tasks, but OpenMAO remains the
+system of record for the work and its organizational consequences.
+
+For high-risk capabilities, OpenMAO must be in the execution path. Governance is enforceable only
+when agents receive capability access through OpenMAO-managed providers or credential brokers, not
+through raw credentials they can use directly.
 
 The product principle:
 
-> Bring your own agents. OpenMAO makes them accountable.
+> Bring your agents and tools. OpenMAO gives the work a place to live.
+
+## Vision
+
+OpenMAO is designed to support four long-term organizational capabilities:
+
+1. **Enforced actions:** high-risk work routes through OpenMAO-managed capabilities before execution.
+2. **Governed tools:** agents use business tools, MCP servers, APIs, databases, browsers, shells,
+   file systems, and SaaS products through scoped OpenMAO tool/capability contracts.
+3. **Trusted memory:** individual observations and artifacts become collective memory only through
+   governed promotion.
+4. **Self-learning:** repeated blockers, missing capabilities, stale memory, weak handoffs, and
+   policy gaps become proposed improvements instead of silent drift.
+
+OpenMAO should help an AI-native organization remember what happened, understand what is true,
+improve how it works, and stay accountable to human authority.
 
 ## Core Invariants
 
 A change that violates these invariants is a bug.
 
 1. OpenMAO owns organizational truth.
-2. Every state-changing action goes through services and emits an event.
-3. Shared memory changes only through promotion and approval.
-4. Capability execution is governed before it runs.
-5. The UI and API are adapters over services; they do not orchestrate or write directly to storage.
-6. The world model is a rebuildable projection, not a source of truth.
-7. External runtimes can execute work, but they cannot own policy, approval state, memory, events, or run lifecycle.
-8. The default local demo requires no external credentials, live LLM calls, hosted services, or networked tools.
+2. Work items, owners, reviewers, lifecycle, approvals, memory consequences, event history, and world-model truth live in OpenMAO.
+3. Every state-changing action goes through services and emits an event.
+4. Shared memory changes only through promotion and approval.
+5. High-risk capability execution is enforced before it runs; agents must not receive raw credentials that bypass OpenMAO.
+6. State-changing UI and API paths are adapters over services; they do not orchestrate or write
+   directly to storage.
+7. The world model is a rebuildable projection, not a source of truth.
+8. External runtimes can execute bounded tasks, but they cannot own policy, approval state, collective memory, events, or organizational work lifecycle.
+9. The default local demo requires no external credentials, live LLM calls, hosted services, or networked tools.
 
 ## Product Shape
 
-OpenMAO models the organizational layer around AI work:
+OpenMAO models the durable substrate under AI work:
 
 - **Workspace:** local tenant boundary for runs, state, memory, and events.
 - **Organization:** mission, roles, policies, goals, and operating context.
@@ -31,7 +54,10 @@ OpenMAO models the organizational layer around AI work:
 - **Agent:** role-bound worker with scoped memory and model binding.
 - **WorkItem:** accountable unit of work with owner, reviewer, criteria, risk, and gates.
 - **Run:** one execution attempt over work.
-- **Capability:** declared action with canonical input/output schemas.
+- **Tool:** external system, API, MCP server, browser, shell, file surface, or SaaS product an agent
+  wants to use.
+- **Capability:** governed declaration that exposes a tool action through canonical schemas, risk,
+  provider, credential handle, policy, approval behavior, and audit semantics.
 - **ApprovalRequest:** durable human gate for high-risk actions.
 - **MemoryEntry:** individual or collective knowledge.
 - **PromotionCandidate:** proposal to move individual memory into trusted collective memory.
@@ -45,12 +71,12 @@ the generated portable schema lives in [schemas/canonical/v0.schema.json](../sch
 ## Layer Model
 
 ```text
-Agents, tools, external runtimes
-  -> governed worker/capability adapters
-  -> OpenMAO services
-  -> SQLite state, events, checkpoints, memory metadata
-  -> world model projection
-  -> CLI, API, operator console
+OpenMAO work items, roles, policies, approvals, memory, events, world model
+  -> bounded work envelopes and governed capability adapters
+  -> agents, tools, external runtimes execute tasks
+  -> high-risk capabilities route back through OpenMAO-managed providers
+  -> outcomes, traces, artifacts, and memory proposals return to OpenMAO
+  -> CLI, API, operator console inspect the organizational record
 ```
 
 ## Concern Ownership
@@ -72,12 +98,36 @@ Agents, tools, external runtimes
 | HTTP API and console | `ts/src/api/` |
 | CLI | `ts/src/cli.ts` |
 
+## Substrate Boundary
+
+OpenMAO owns organizational state, not every execution detail.
+
+| OpenMAO owns | Execution layer owns |
+| --- | --- |
+| Work item and objective | Execution of a bounded task |
+| Owner, reviewer, role, and authority | Model calls, tool loops, and worker-local planning |
+| Lifecycle: queued, in progress, blocked, review, done | Framework-specific internal steps and retries |
+| Handoffs between roles/workers | Per-task scratchpads and transient context |
+| Policy decisions and approval state | Provider-specific execution details |
+| Capability grants, credential handles, and risk classification | How a provider performs an approved action |
+| Cross-run memory and promotion | Per-run working memory |
+| Workspace event log and world model | Per-call telemetry unless ingested into OpenMAO |
+
+The word "run" can appear on both sides of this boundary. OpenMAO owns the organizational run or
+work state: what is assigned, blocked, approved, reviewed, or complete. Execution frameworks may own
+their internal run state: retry counts, model steps, tool-loop checkpoints, or provider-specific
+execution graphs.
+
 ## Control Spine
 
 The spine is the only component that coordinates organizational work. It creates runs, checkpoints
 state, routes handoffs, invokes workers through bounded envelopes, evaluates capability boundaries,
 suspends for approval, resumes after approval, writes traces, and updates source state through
 services.
+
+The deterministic local demo also bootstraps its default organization, roles, agents, work item, and
+mock capability through the spine so the release can run without external files or credentials. That
+bootstrap is demo fixture wiring, not a second owner for organization or capability semantics.
 
 The local release supports one active non-terminal run per workspace. This keeps approval/resume and
 idempotency behavior deterministic. A run in `queued`, `running`, or `suspended_approval` holds the
@@ -96,6 +146,28 @@ Approval is durable state, not an in-memory callback.
 
 Approval-required capabilities suspend before provider execution. Resume reloads the persisted
 `CapabilityCall` and executes it once through the node-effect/idempotency protocol.
+
+## Enforced Capability Boundary
+
+OpenMAO supports cooperative integration paths, but v1 should prioritize enforceable ones.
+
+- **Cooperative path:** a worker calls the OpenMAO SDK to record work, ask for approval, or submit
+  outcomes. This is useful for well-behaved workers and integrations.
+- **Enforced path:** a worker cannot perform a risky side effect unless it calls an
+  OpenMAO-managed capability provider. Credentials and provider handles live behind OpenMAO, policy
+  runs before execution, approval-required calls suspend before execution, and every result is
+  recorded.
+
+Examples of enforced capabilities include sending email, writing to a code repository, updating a
+CRM, triggering a deployment, exporting data, issuing a refund, or mutating production systems.
+
+Tools are the concrete external systems behind those capabilities. OpenMAO should not give agents
+ambient access to a tool account. It should expose narrow tool actions as capabilities with schemas,
+grants, risk, approval behavior, credential handles, idempotency, and audit records.
+
+The enforced path is what makes OpenMAO more than an advisory audit log. If a worker can bypass
+OpenMAO with raw credentials, OpenMAO can observe or reconcile after the fact, but it cannot claim to
+govern that action.
 
 ## Memory Model
 
@@ -135,7 +207,8 @@ for later providers, hosted storage, and external workers.
 ## Integration Boundary
 
 OpenMAO can integrate with external services, tools, and runtimes through governed adapters. Those
-adapters must translate work into OpenMAO-native contracts and return through OpenMAO services.
+adapters must translate work into OpenMAO-native contracts and return outcomes, events, traces,
+artifacts, and memory proposals through OpenMAO services.
 
 Do not clone, vendor, fork, embed, or copy external framework code. New external dependencies require
 maintainer approval and tests proving they preserve OpenMAO authority, policy, approval, memory,

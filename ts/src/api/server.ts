@@ -666,7 +666,7 @@ function consoleHtml(): string {
       try {
         if (view === "world") return renderJson(await request("/world"));
         if (view === "runs") return renderRows(await request("/runs"), ["id", "status", "active_node", "suspended_approval_id"]);
-        if (view === "work") return renderRows(await request("/work"), ["id", "status", "title", "owner_agent_id"]);
+        if (view === "work") return renderRows(await request("/work"), ["id", "status", "title", "owner"]);
         if (view === "agents") return renderRows(await request("/agents"), ["id", "identity", "role_id", "status"]);
         if (view === "approvals") {
           return renderRows(await request("/approvals"), ["id", "action", "status", "on_approve", "on_reject"], (row) => [

@@ -4,9 +4,9 @@ OpenMAO is early-stage and local-first. The default demo must not require extern
 
 ## Reporting a Vulnerability
 
-Before public release, report suspected vulnerabilities through a private maintainer channel with access to the repository.
+Report suspected vulnerabilities through GitHub private vulnerability reporting:
 
-After public release, use GitHub private vulnerability reporting when enabled. If that is unavailable, use the public security contact published by the maintainers before release.
+<https://github.com/aeonbilal/OpenMAO/security/advisories/new>
 
 Do not disclose suspected vulnerabilities in public issues, pull requests, discussions, screenshots, or logs.
 

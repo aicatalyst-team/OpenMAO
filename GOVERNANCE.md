@@ -35,5 +35,7 @@ This document defines public project governance for OpenMAO.
 2. Canonical contract changes require maintainer approval.
 3. Security-sensitive changes require security review.
 4. No real external credentials, networked tools, or live infrastructure mutation are required for the default demo.
-5. External runtimes may execute governed work, but no foreign runtime or framework becomes an OpenMAO source of truth.
-6. The operator console never orchestrates and never writes directly to storage.
+5. External runtimes may execute bounded tasks, but no foreign runtime or framework becomes the source of truth for OpenMAO work, authority, approvals, memory, events, or world model state.
+6. Tool access must be exposed through scoped capability contracts before it is treated as governed.
+7. High-risk external capabilities must be designed to run through OpenMAO-managed providers or credential brokers before they are treated as enforceable.
+8. The operator console never orchestrates and never writes directly to storage.

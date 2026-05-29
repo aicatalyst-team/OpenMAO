@@ -6,7 +6,7 @@ It is release-specific; for current architecture and future direction, see
 
 ## Shipped
 
-### Core Runtime
+### Organizational Substrate
 
 | Feature | Evidence |
 | --- | --- |
@@ -74,9 +74,21 @@ It is release-specific; for current architecture and future direction, see
 
 ## Positioning
 
-The first release is positioned as a governance-first, audit-first local control layer. It proves
-that an AI organization can suspend for human approval, resume from durable state, treat collective
-memory as gated shared state, and leave an auditable trail.
+The first release is positioned as a governance-first, audit-first local organizational substrate.
+It proves that AI work can live in OpenMAO with ownership, durable approval, governed memory, and an
+auditable history, even while execution remains deterministic and local.
+
+The first release is not yet useful as a live external-worker substrate. It establishes the work,
+policy, approval, memory, event, and world-model semantics that future workers and frameworks will
+operate against.
+
+The first release proves approval-before-execution with a deterministic mock provider, but it does
+not yet enforce real external actions through brokered credentials or real capability providers.
+That enforced capability path is the v1 wedge.
+
+The long-term tool model is also deferred. The first release has one mock capability, but it does
+not yet provide a real tool registry, MCP execution, SaaS connectors, browser/shell/file tools, or
+credential-backed providers.
 
 It is not positioned as:
 
@@ -84,3 +96,8 @@ It is not positioned as:
 - a sandbox-execution environment for AI agents;
 - a self-improving AI organization;
 - a hosted product.
+
+The long-term mission still includes organizational memory and governed self-learning. They are
+deliberately staged: the first release proves memory promotion, v1 focuses on enforced external
+actions, and later releases expand into evidence-backed memory review and human-approved
+improvement proposals.

@@ -1,6 +1,6 @@
 # Contributing to OpenMAO
 
-OpenMAO is an organizational control layer for AI-native work. Contributions should preserve the
+OpenMAO is the organizational substrate for AI-native work. Contributions should preserve the work,
 authority, approval, memory, audit, and world-model boundaries described in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

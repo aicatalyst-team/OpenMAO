@@ -1,6 +1,10 @@
 # Deployment Modes
 
-OpenMAO supports three deployment modes. They differ in *which backends serve each plane* — the control plane (OpenMAO's own runtime state) and the data plane (organization-owned infrastructure). The canonical contracts, the governance rules, and the audit log invariants are identical across all three modes; only the backends underneath them change.
+OpenMAO supports three deployment modes. They differ in which backends serve the organizational
+substrate and the external data plane. The substrate is OpenMAO's own state: work, roles, authority,
+approvals, memory, events, traces, and world-model projections. The data plane is
+organization-owned infrastructure and business data. The canonical contracts, governance rules, and
+audit invariants are identical across all three modes; only the backends underneath them change.
 
 This document describes adoption modes. The modes do not introduce additional contract types.
 
@@ -72,11 +76,14 @@ Properties:
 
 ## What stays constant across all modes
 
-These are properties of the OpenMAO control plane, not of any deployment mode:
+These are properties of the OpenMAO organizational substrate, not of any deployment mode:
 
+- Work items, owners, reviewers, lifecycle, approvals, memory consequences, and world-model truth live in OpenMAO.
 - Every state-changing action emits an `Event`.
 - Every graph node emits a `Trace`.
+- Tools are exposed through scoped capability contracts rather than ambient access.
 - Every capability call is checked against policy and may suspend on approval before execution.
+- High-risk capabilities should execute through OpenMAO-managed providers or credential brokers, not raw credentials handed to agents.
 - Collective memory writes happen only through approved promotion.
 - Agents never receive raw provider credentials.
 - The CLI and console run the same way; only the configured backends change.

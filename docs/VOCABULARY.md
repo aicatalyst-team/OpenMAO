@@ -1,9 +1,23 @@
 # OpenMAO Vocabulary
 
-OpenMAO uses native names for its organizational control concepts. This page maps product vocabulary
+OpenMAO uses native names for its organizational substrate concepts. This page maps product vocabulary
 to the current contract model names. If a concept is not listed here, defer to
 [docs/ARCHITECTURE.md](./ARCHITECTURE.md) and the executable contracts in
 [ts/src/contracts/models.ts](../ts/src/contracts/models.ts).
+
+## Positioning Terms
+
+| Term | Meaning |
+| --- | --- |
+| Organizational substrate | The durable place where AI work lives: work items, owners, reviewers, lifecycle, policy, approvals, memory consequences, events, and world-model state. |
+| Execution layer | The agent framework, worker, tool loop, model provider, or workflow engine that executes a bounded task. |
+| Tool | A concrete external system an agent wants to use: MCP server, API, database, browser, shell, file surface, SaaS product, or internal service. |
+| Capability | The OpenMAO-governed declaration that exposes a tool action with schema, provider, risk, credential handle, policy, approval, and audit semantics. |
+| Enforced capability | A side-effecting action that can only execute through an OpenMAO-managed provider or credential broker, after policy and approval checks. |
+| Cooperative integration | A worker voluntarily calls OpenMAO to record or request governance actions. Useful, but weaker than enforced capability access. |
+| System of record for AI work | OpenMAO's role: preserving the accountable work history and organizational consequences across runs, agents, tools, and frameworks. |
+| Organizational memory | The governed memory plane where individual observations, artifacts, and decisions can become trusted collective knowledge through promotion. |
+| Governed self-learning | A future loop where OpenMAO proposes improvements to roles, policies, workflows, memory, and capabilities based on observed evidence, subject to review. |
 
 ## Canonical Types
 
@@ -50,12 +64,50 @@ OpenMAO splits "task" into two types because they answer different questions.
 
 One `WorkItem` can produce many `TaskEnvelope`s across retries or re-delegations.
 
+### Organizational State → OpenMAO + Execution Runtime
+
+OpenMAO owns organizational state, while execution frameworks own their internal execution state.
+
+- OpenMAO owns work item lifecycle, ownership, review, policy decisions, approvals, memory promotion,
+  events, traces, and world-model projection.
+- Execution frameworks own model calls, tool-loop internals, provider-specific retries, transient
+  scratchpads, and task-local planning.
+
+This keeps OpenMAO from becoming a replacement for every agent framework while still making it the
+system of record for AI work.
+
+### Cooperative Governance → Enforced Capability Access
+
+OpenMAO distinguishes advisory integration from enforceable integration.
+
+- Cooperative governance means a worker calls OpenMAO because it is designed to do so.
+- Enforced capability access means the worker cannot perform a risky side effect without going
+  through OpenMAO because the provider credentials or capability handles live behind OpenMAO.
+
+The enforced path is the stronger product boundary for actions such as sending, spending, deploying,
+writing, exporting, or mutating shared systems.
+
+### Tool → Capability → Provider
+
+OpenMAO separates what agents want to use from how access is governed.
+
+- A **tool** is the external thing: GitHub, Gmail, Slack, Postgres, an MCP server, a browser, a shell,
+  a filesystem, or a private API.
+- A **capability** is the OpenMAO contract for a specific action on that tool: name, input/output
+  schema, risk, grants, approval behavior, idempotency, and audit payload.
+- A **provider** is the implementation that executes the approved capability call and resolves any
+  credential handles internally.
+
+This split lets OpenMAO govern tool access without becoming the tool itself.
+
 ### WorldModelEvent → `Event` + `WorldModelSnapshot`
 
-OpenMAO is event-sourced.
+OpenMAO is event-recorded and projection-based.
 
 - `Event` is the durable atomic record of something that happened.
-- `WorldModelSnapshot` is a materialized projection over events. It is a cache, not a source of truth. The world model never writes events; events feed the world model.
+- `WorldModelSnapshot` is a materialized projection over events and source state. It is a cache, not
+  a source of truth. The world model never writes events; events and source stores feed the world
+  model.
 
 ### Mission → field on `Organization`
 

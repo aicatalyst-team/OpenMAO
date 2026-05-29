@@ -3,7 +3,7 @@
 This document maps the first-release acceptance surface to code and test evidence.
 It does not replace maintainer release approval.
 
-**Status:** `v0.1.0-rc.1` release-candidate evidence verified; maintainer acceptance pending
+**Status:** `v0.1.0-rc.2` release-candidate evidence verified; maintainer acceptance pending
 **Last updated:** 2026-05-29
 **Runtime:** TypeScript on Node.js 22 LTS
 
@@ -22,7 +22,7 @@ The default demo must require no external API keys or external services.
 
 Latest verification on 2026-05-29:
 
-- `make check` passed: TypeScript lint, typecheck, and 43 Vitest tests.
+- `make check` passed: TypeScript lint, typecheck, and 44 Vitest tests.
 - `npm run hygiene:public` passed: tracked-file secret and public-boundary scan.
 - `rm -rf .openmao && make demo && make demo-approve && rm -rf .openmao` passed.
 - `make install` passed with `0` reported vulnerabilities.

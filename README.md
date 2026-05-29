@@ -1,6 +1,6 @@
 # OpenMAO
 
-OpenMAO is an open-source control layer for AI-native organizations.
+OpenMAO is the open-source organizational substrate for AI-native companies.
 
 It helps teams answer the questions that appear once agents and tools start doing real work:
 
@@ -11,26 +11,35 @@ It helps teams answer the questions that appear once agents and tools start doin
 - What happened, in what order, and why?
 
 OpenMAO does not try to replace every agent framework or business tool. Bring your own agents,
-workflows, APIs, and MCP tools; OpenMAO gives them shared roles, policies, approvals, memory
-governance, audit trails, and a live world model.
+workflows, APIs, and MCP tools; OpenMAO gives the work a place to live with shared ownership,
+policies, approvals, memory governance, audit trails, and a live world model.
 
-> Bring your own agents. OpenMAO makes them accountable.
+> Bring your agents and tools. OpenMAO gives the work a place to live.
+> Start with enforced approvals and audit for agent actions.
+> Grow into trusted organizational memory and governed self-learning.
 
 ---
 
 ## What OpenMAO Does
 
-OpenMAO provides the organizational layer around AI work:
+OpenMAO is the system of record for AI work:
 
 - **Roles and ownership:** define who is responsible for work, review, and capabilities.
+- **Work lifecycle:** track accountable work from intake through assignment, blocking, review, and completion.
 - **Policy and authority:** decide what agents or workers can read, write, call, or change.
 - **Approval gates:** pause high-stakes actions until the right human approves or rejects them.
+- **Tool governance:** expose business tools, MCP servers, APIs, browsers, shells, files, and SaaS
+  products through scoped contracts instead of raw access.
+- **Capability enforcement:** route risky side effects through governed providers instead of handing raw credentials to agents.
 - **Memory promotion:** keep scratchpad knowledge separate from trusted shared memory.
+- **Learning loops:** turn repeated blockers, stale memory, policy gaps, and weak handoffs into reviewed improvement proposals.
 - **Events and traces:** record state changes and execution steps so work can be audited.
 - **World model:** maintain a rebuildable view of goals, runs, blockers, approvals, memory, and recent activity.
 
-The key rule is simple: external workers may execute tasks, but OpenMAO remains the system of
-record for organizational truth.
+The key rule is simple: external frameworks may execute bounded tasks, but the work item, owner,
+lifecycle, approvals, memory consequences, event history, and world model live in OpenMAO. For risky
+side effects, OpenMAO should be in the execution path: the agent cannot send, spend, deploy, write,
+or mutate through governed capabilities without policy, approval, and audit.
 
 ## Current Status
 
@@ -81,17 +90,18 @@ The console runs on `127.0.0.1` and prompts for the operator token printed by th
 
 ## How It Fits
 
-OpenMAO is the control plane, not the data plane.
+OpenMAO is the organizational substrate. Execution frameworks are workers on top of it.
 
 ```text
-Agents, workers, tools, and workflows
-  -> governed capabilities and worker adapters
-  -> OpenMAO policy, approvals, memory, events, traces
-  -> rebuildable world model and operator surfaces
+OpenMAO work items, owners, policies, approvals, memory, events, world model
+  -> bounded work envelopes
+  -> agents, workers, tools, and workflows execute bounded tasks
+  -> risky capabilities route back through OpenMAO before execution
+  -> outcomes return to OpenMAO as organizational record
 ```
 
 The current execution path is deterministic and local. Future integration modes will let external
-workers participate through SDK calls, governed capability gateways, and event/trace ingestion.
+workers participate through SDK calls, enforced capability gateways, and event/trace ingestion.
 
 ## Useful Commands
 

@@ -1,6 +1,7 @@
 # OpenMAO Documentation Map
 
-This directory contains product, architecture, release, and contributor-facing documentation.
+This directory contains product, architecture, release, and contributor-facing documentation for
+OpenMAO as the organizational substrate for AI-native work.
 
 ## Document Types
 

@@ -19,7 +19,11 @@ Read in this order:
 - Use deterministic/mock defaults.
 - Do not require external credentials for the default demo.
 - Do not clone, vendor, fork, embed, or copy external agent framework code.
-- External runtimes may be governed workers/capabilities, but they must not own OpenMAO truth.
+- External runtimes may execute bounded tasks, but OpenMAO owns the work item, authority, approvals,
+  memory promotion, events, and world-model truth.
+- Tool access must be modeled as scoped capabilities before it is treated as governed.
+- High-risk external actions must not be described as governed unless they run through
+  OpenMAO-managed providers or credential brokers.
 - Do not copy closed-source project content into this repo.
 - Do not commit internal communications, private strategy notes, session transcripts, model
   conversations, scratch decisions, or pre-public build-process records.

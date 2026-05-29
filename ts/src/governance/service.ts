@@ -62,6 +62,9 @@ export class GovernanceService {
     } else if (capability.default_permission === "approval_required") {
       outcome = "require_approval";
       reason = `Capability requires approval before execution: ${call.capability_name}.`;
+    } else if (call.risk_level === "high") {
+      outcome = "require_approval";
+      reason = `High-risk capability call requires approval before execution: ${call.capability_name}.`;
     } else {
       outcome = "allow";
       reason = `Capability is enabled and granted: ${call.capability_name}.`;
