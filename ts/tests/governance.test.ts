@@ -538,6 +538,34 @@ describe("TypeScript governance and capabilities", () => {
     expect(provider.executedCallIds).toEqual([call.id]);
   });
 
+  it("records an explicit blocked result after a capability approval is rejected", async () => {
+    const run = await seedRunningRun();
+    await seedCapability("approval_required");
+    const registry = await orgRegistry();
+    const provider = new MockProvider();
+    const service = new CapabilityRegistryService(
+      database,
+      new GovernanceService(database, registry),
+      [provider],
+    );
+    const call = await capabilityCall(run, {
+      id: "capcall_33333333333333333333333333333333",
+      idempotency_key: `${run.id}:approval_rejected`,
+    });
+
+    const suspendedInvocation = service.invoke(call);
+    new ApprovalService(database).reject(suspendedInvocation.approval_id ?? "", {
+      workspace_id: run.workspace_id,
+      actor: "test_operator",
+    });
+    const rejectedInvocation = service.invoke(call);
+
+    expect(rejectedInvocation.decision.outcome).toBe("require_approval");
+    expect(rejectedInvocation.result?.status).toBe("blocked");
+    expect(rejectedInvocation.result?.error).toContain("approval was rejected");
+    expect(provider.executedCallIds).toEqual([]);
+  });
+
   it("blocks ungranted capabilities without provider execution", async () => {
     const run = await seedRunningRun();
     await seedCapability("enabled");
