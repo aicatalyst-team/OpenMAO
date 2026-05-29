@@ -56,6 +56,7 @@ type RegisterWorkerInput = {
 };
 
 type AssignWorkInput = {
+  workspace_id: string;
   work_item_id: string;
   owner: string;
   reviewer?: string | null;
@@ -64,6 +65,7 @@ type AssignWorkInput = {
 };
 
 type SetWorkStatusInput = {
+  workspace_id: string;
   work_item_id: string;
   status: Extract<WorkItem["status"], "in_progress" | "blocked" | "review" | "done" | "failed">;
   actor: string;
@@ -87,6 +89,7 @@ type SubmitWorkerOutcomeInput = {
 };
 
 type ReviewWorkInput = {
+  workspace_id: string;
   work_item_id: string;
   decision: "accepted" | "changes_requested" | "rejected";
   actor: string;
@@ -211,6 +214,7 @@ export class WorkService {
   assignWork(input: AssignWorkInput): WorkItem {
     return this.database.transaction(() => {
       const current = this.requireWorkItem(input.work_item_id);
+      this.requireWorkspaceMatch(current, input.workspace_id);
       const updated = this.workItems.update(
         WorkItemSchema.parse({
           ...current,
@@ -240,6 +244,8 @@ export class WorkService {
 
   setStatus(input: SetWorkStatusInput): WorkItem {
     return this.database.transaction(() => {
+      const current = this.requireWorkItem(input.work_item_id);
+      this.requireWorkspaceMatch(current, input.workspace_id);
       const updated = this.workItems.setStatus(input.work_item_id, input.status);
       this.events.append({
         workspace_id: updated.workspace_id,
@@ -318,6 +324,7 @@ export class WorkService {
   reviewWork(input: ReviewWorkInput): WorkItem {
     return this.database.transaction(() => {
       const current = this.requireWorkItem(input.work_item_id);
+      this.requireWorkspaceMatch(current, input.workspace_id);
       const nextStatus =
         input.decision === "accepted"
           ? "done"
@@ -547,5 +554,11 @@ export class WorkService {
       throw new Error(`work item not found: ${workItemId}`);
     }
     return workItem;
+  }
+
+  private requireWorkspaceMatch(workItem: WorkItem, workspaceId: string): void {
+    if (workItem.workspace_id !== workspaceId) {
+      throw new Error(`work item not found in workspace: ${workItem.id}`);
+    }
   }
 }

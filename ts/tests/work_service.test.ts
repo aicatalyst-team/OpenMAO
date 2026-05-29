@@ -13,6 +13,7 @@ import {
   TaskEnvelopeStore,
   WorkerIdentityStore,
   WorkerOutcomeStore,
+  WorkItemStore,
   WorkspaceStore,
 } from "../src/persistence/index.js";
 import { WorkService } from "../src/work/index.js";
@@ -77,6 +78,7 @@ describe("v1 work service", () => {
       idempotency_key: "work:governed-update:create",
     });
     const assigned = service.assignWork({
+      workspace_id: workspace.id,
       work_item_id: work.id,
       owner: worker.id,
       reviewer: "human",
@@ -118,6 +120,7 @@ describe("v1 work service", () => {
       idempotency_key: "work:governed-update:outcome",
     });
     const reviewed = service.reviewWork({
+      workspace_id: workspace.id,
       work_item_id: work.id,
       decision: "accepted",
       actor: "reviewer:human",
@@ -230,5 +233,53 @@ describe("v1 work service", () => {
         idempotency_key: "work:over-granted:envelope",
       }),
     ).toThrow("exceed worker grants");
+  });
+
+  it("rejects cross-workspace work lifecycle writes at the service boundary", async () => {
+    const workspace = await seedWorkspace();
+    const otherWorkspace = new WorkspaceStore(database).save(
+      WorkspaceSchema.parse({
+        id: "ws_22222222222222222222222222222222",
+        name: "Second Workspace",
+        created_at: "2026-05-27T15:20:00Z",
+        default_org_id: null,
+      }),
+    );
+    const service = new WorkService(database);
+    const work = service.createWork({
+      id: "work_28282828282828282828282828282828",
+      workspace_id: workspace.id,
+      title: "Workspace-owned work",
+      objective: "Prove lifecycle writes cannot cross workspace boundaries.",
+      owner: "operator:local",
+      actor: "operator:local",
+      idempotency_key: "work:workspace-owned:create",
+    });
+
+    expect(() =>
+      service.assignWork({
+        workspace_id: otherWorkspace.id,
+        work_item_id: work.id,
+        owner: "operator:other",
+        actor: "operator:other",
+      }),
+    ).toThrow("not found in workspace");
+    expect(() =>
+      service.setStatus({
+        workspace_id: otherWorkspace.id,
+        work_item_id: work.id,
+        status: "done",
+        actor: "operator:other",
+      }),
+    ).toThrow("not found in workspace");
+    expect(() =>
+      service.reviewWork({
+        workspace_id: otherWorkspace.id,
+        work_item_id: work.id,
+        decision: "accepted",
+        actor: "operator:other",
+      }),
+    ).toThrow("not found in workspace");
+    expect(new WorkItemStore(database).get(work.id)?.status).toBe("queued");
   });
 });

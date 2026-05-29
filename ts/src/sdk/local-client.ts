@@ -126,7 +126,11 @@ export class OpenMaoLocalClient {
     reviewer?: string | null;
     idempotency_key?: string | null;
   }): WorkItem {
-    return this.work.assignWork({ ...input, actor: this.context.actor });
+    return this.work.assignWork({
+      ...input,
+      workspace_id: this.context.workspace_id,
+      actor: this.context.actor,
+    });
   }
 
   workItems(): WorkItem[] {
@@ -173,7 +177,11 @@ export class OpenMaoLocalClient {
     notes?: string | null;
     idempotency_key?: string | null;
   }): WorkItem {
-    return this.work.reviewWork({ ...input, actor: this.context.actor });
+    return this.work.reviewWork({
+      ...input,
+      workspace_id: this.context.workspace_id,
+      actor: this.context.actor,
+    });
   }
 
   recordIngestion(input: RecordIngestionInput): IngestionRecord {

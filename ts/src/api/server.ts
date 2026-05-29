@@ -558,6 +558,7 @@ export function createServer(options: ServerOptions = {}) {
           response,
           200,
           new WorkService(database).assignWork({
+            workspace_id: context.workspaceId,
             work_item_id: approvalRoute.workId,
             owner: String(body.owner ?? ""),
             reviewer: typeof body.reviewer === "string" ? body.reviewer : null,
@@ -576,6 +577,7 @@ export function createServer(options: ServerOptions = {}) {
           response,
           200,
           new WorkService(database).setStatus({
+            workspace_id: context.workspaceId,
             work_item_id: approvalRoute.workId,
             status: String(body.status ?? "") as never,
             reason: typeof body.reason === "string" ? body.reason : null,
@@ -594,6 +596,7 @@ export function createServer(options: ServerOptions = {}) {
           response,
           200,
           new WorkService(database).reviewWork({
+            workspace_id: context.workspaceId,
             work_item_id: approvalRoute.workId,
             decision: String(body.decision ?? "") as never,
             notes: typeof body.notes === "string" ? body.notes : null,

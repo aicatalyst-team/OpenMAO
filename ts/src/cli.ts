@@ -247,6 +247,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       printJson(
         write,
         new WorkService(database).assignWork({
+          workspace_id: selectedWorkspace,
           work_item_id: workId,
           owner: requireOption(args, "--owner"),
           reviewer: optionValue(args, "--reviewer"),
@@ -264,6 +265,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       printJson(
         write,
         new WorkService(database).setStatus({
+          workspace_id: selectedWorkspace,
           work_item_id: workId,
           status: status as never,
           actor: "cli_operator",
@@ -309,6 +311,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       printJson(
         write,
         new WorkService(database).reviewWork({
+          workspace_id: selectedWorkspace,
           work_item_id: workId,
           decision: decision as never,
           actor: "cli_operator",
