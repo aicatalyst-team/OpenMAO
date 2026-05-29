@@ -447,11 +447,12 @@ export class CapabilityRegistryService {
         call_id: call.id,
         node_effect_id: effect.id,
       });
+      assertNoSensitiveMaterial(result.output, "capability_result.output");
+      assertNoSensitiveMaterial(result.artifacts, "capability_result.artifacts");
       if (result.status === "ok") {
         this.validatePayload(result.output, capability.canonical_output_schema, "output");
-        assertNoSensitiveMaterial(result.output, "capability_result.output");
-        assertNoSensitiveMaterial(result.artifacts, "capability_result.artifacts");
-      } else if (result.error) {
+      }
+      if (result.error) {
         assertNoSensitiveString(result.error, "capability_result.error");
       }
       return this.recordResultEvent(result, `${call.id}:completed`);

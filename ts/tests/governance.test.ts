@@ -495,6 +495,45 @@ describe("TypeScript governance and capabilities", () => {
     expect(auditJson).not.toContain("sk-testsecret123456");
   });
 
+  it("does not persist secret-shaped failed provider output", async () => {
+    const run = await seedRunningRun();
+    await seedCapability("enabled");
+    const registry = await orgRegistry();
+    const secretProvider = {
+      name: "mock",
+      executedCallIds: [] as string[],
+      execute(call: CapabilityCall) {
+        this.executedCallIds.push(call.id);
+        return CapabilityResultSchema.parse({
+          id: "capresult_15151515151515151515151515151515",
+          workspace_id: call.workspace_id,
+          run_id: call.run_id,
+          call_id: call.id,
+          status: "failed",
+          output: { api_key: "sk-testsecret123456" },
+          error: "provider failed without leaking the credential",
+        });
+      },
+    };
+    const service = new CapabilityRegistryService(
+      database,
+      new GovernanceService(database, registry),
+      [secretProvider],
+    );
+    const call = await capabilityCall(run, {
+      id: "capcall_15151515151515151515151515151515",
+      idempotency_key: `${run.id}:failed_provider_output_redaction`,
+    });
+
+    const invocation = service.invoke(call);
+    const auditJson = JSON.stringify(new EventStore(database).listForWorkspace(run.workspace_id));
+
+    expect(invocation.result?.status).toBe("failed");
+    expect(invocation.result?.error).not.toContain("sk-testsecret123456");
+    expect(secretProvider.executedCallIds).toEqual([call.id]);
+    expect(auditJson).not.toContain("sk-testsecret123456");
+  });
+
   it("does not re-execute a provider when a node-effect guard exists without a result", async () => {
     const run = await seedRunningRun();
     await seedCapability("enabled");
