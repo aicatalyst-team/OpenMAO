@@ -24,8 +24,23 @@ export function validateId(value: string): string {
   return value;
 }
 
+export function formatUtc(epochMillis: number): string {
+  return new Date(epochMillis).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 export function utcNow(): string {
-  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  return formatUtc(Date.now());
+}
+
+// Normalize any valid RFC3339 UTC instant to canonical second precision, so that
+// lexicographic string comparison (used by SQL `<=` on stored timestamps) matches
+// chronological order. Throws on an unparseable value.
+export function normalizeInstant(value: string): string {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    throw new Error("timestamp must be a parseable RFC3339 UTC instant");
+  }
+  return formatUtc(parsed);
 }
 
 export function validateUtcTimestamp(value: string): string {

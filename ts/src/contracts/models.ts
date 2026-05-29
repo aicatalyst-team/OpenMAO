@@ -618,6 +618,40 @@ export const OrgChangeProposalSchema = z
   })
   .strict();
 
+export const CadenceKindSchema = z.enum(["learning_scan", "stale_approval_sweep", "status_digest"]);
+
+export const CadenceSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    kind: CadenceKindSchema,
+    // Bounded above (~10 years) so advancing next_due_at can never overflow the
+    // representable RFC3339 year range.
+    interval_seconds: z.number().int().positive().max(315_360_000),
+    enabled: z.boolean().default(true),
+    created_at: UtcTimestampSchema,
+    last_fired_at: UtcTimestampSchema.nullable().default(null),
+    next_due_at: UtcTimestampSchema,
+  })
+  .strict();
+
+export const NotificationSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    actor: z.string().default("chief_of_staff"),
+    kind: z.string(),
+    severity: z.enum(["info", "attention", "urgent"]).default("info"),
+    summary: z.string(),
+    evidence: z.array(OrgChangeEvidenceSchema).default([]),
+    refs: z.array(z.string()).default([]),
+    status: z.enum(["unread", "read"]).default("unread"),
+    source_event_id: CanonicalIdSchema.nullable().default(null),
+    created_at: UtcTimestampSchema,
+    read_at: UtcTimestampSchema.nullable().default(null),
+  })
+  .strict();
+
 export const WorldModelSnapshotSchema = z
   .object({
     id: CanonicalIdSchema,
@@ -673,6 +707,8 @@ export const canonicalModelSchemas = {
   ModelRequest: ModelRequestSchema,
   ModelResponse: ModelResponseSchema,
   OrgChangeProposal: OrgChangeProposalSchema,
+  Cadence: CadenceSchema,
+  Notification: NotificationSchema,
   WorldModelSnapshot: WorldModelSnapshotSchema,
 } as const;
 
@@ -688,6 +724,7 @@ export const schemaDefinitions = {
   CapabilityProviderRef: CapabilityProviderRefSchema,
   OrgChangeEvidence: OrgChangeEvidenceSchema,
   OrgChangeSourceSignal: OrgChangeSourceSignalSchema,
+  CadenceKind: CadenceKindSchema,
   ...canonicalModelSchemas,
 } as const;
 
@@ -735,4 +772,7 @@ export type ModelResponse = z.infer<typeof ModelResponseSchema>;
 export type OrgChangeEvidence = z.infer<typeof OrgChangeEvidenceSchema>;
 export type OrgChangeSourceSignal = z.infer<typeof OrgChangeSourceSignalSchema>;
 export type OrgChangeProposal = z.infer<typeof OrgChangeProposalSchema>;
+export type CadenceKind = z.infer<typeof CadenceKindSchema>;
+export type Cadence = z.infer<typeof CadenceSchema>;
+export type Notification = z.infer<typeof NotificationSchema>;
 export type WorldModelSnapshot = z.infer<typeof WorldModelSnapshotSchema>;

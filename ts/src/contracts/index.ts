@@ -1,6 +1,8 @@
 export {
+  formatUtc,
   ID_PATTERN,
   newId,
+  normalizeInstant,
   UTC_TIMESTAMP_PATTERN,
   utcNow,
   validateId,

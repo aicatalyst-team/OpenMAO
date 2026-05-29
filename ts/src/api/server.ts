@@ -5,6 +5,8 @@ import {
   type ServerResponse,
 } from "node:http";
 
+import { ChiefOfStaffService } from "../chief_of_staff/index.js";
+import { utcNow } from "../contracts/index.js";
 import { ApprovalService } from "../governance/index.js";
 import { IngestionService } from "../ingestion/index.js";
 import { LearningService } from "../learning/index.js";
@@ -80,6 +82,7 @@ function sendNotFound(response: ServerResponse): void {
 
 function routePattern(pathname: string): {
   approvalId: string | undefined;
+  cosNotificationReadId: string | undefined;
   individualMemoryAgentId: string | undefined;
   learningProposalApplyId: string | undefined;
   learningProposalId: string | undefined;
@@ -93,6 +96,7 @@ function routePattern(pathname: string): {
   workspaceEventsId: string | undefined;
 } {
   const approvalMatch = /^\/approvals\/([^/]+)\/(?:approve|reject)$/.exec(pathname);
+  const cosNotificationReadMatch = /^\/cos\/notifications\/([^/]+)\/read$/.exec(pathname);
   const runEventsMatch = /^\/runs\/([^/]+)\/events$/.exec(pathname);
   const runResumeMatch = /^\/runs\/([^/]+)\/resume$/.exec(pathname);
   const runTracesMatch = /^\/runs\/([^/]+)\/traces$/.exec(pathname);
@@ -106,6 +110,7 @@ function routePattern(pathname: string): {
   const learningProposalMatch = /^\/learning\/proposals\/([^/]+)$/.exec(pathname);
   return {
     approvalId: approvalMatch?.[1],
+    cosNotificationReadId: cosNotificationReadMatch?.[1],
     individualMemoryAgentId: individualMemoryMatch?.[1],
     learningProposalApplyId: learningProposalApplyMatch?.[1],
     learningProposalId: learningProposalMatch?.[1],
@@ -770,6 +775,70 @@ export function createServer(options: ServerOptions = {}) {
         );
         return;
       }
+      if (request.method === "GET" && url.pathname === "/cos/notifications") {
+        sendJson(
+          response,
+          200,
+          new ChiefOfStaffService(database).listNotifications(context.workspaceId, {
+            unreadOnly: url.searchParams.get("unread") === "1",
+          }),
+        );
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/cadences") {
+        sendJson(
+          response,
+          200,
+          new ChiefOfStaffService(database).listCadences(context.workspaceId),
+        );
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/cos/init") {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        sendJson(
+          response,
+          200,
+          new ChiefOfStaffService(database).ensureDefaultCadences(context.workspaceId, utcNow()),
+        );
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/cos/tick") {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        sendJson(
+          response,
+          200,
+          new ChiefOfStaffService(database).tick({
+            workspace_id: context.workspaceId,
+            at: utcNow(),
+          }),
+        );
+        return;
+      }
+      if (request.method === "POST" && approvalRoute.cosNotificationReadId) {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const notificationId = approvalRoute.cosNotificationReadId;
+        const chiefOfStaff = new ChiefOfStaffService(database);
+        if (!chiefOfStaff.getNotification(context.workspaceId, notificationId)) {
+          sendNotFound(response);
+          return;
+        }
+        sendJson(
+          response,
+          200,
+          chiefOfStaff.markRead({
+            workspace_id: context.workspaceId,
+            notification_id: notificationId,
+            at: utcNow(),
+          }),
+        );
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/approvals") {
         sendJson(
           response,
@@ -997,6 +1066,7 @@ function consoleHtml(): string {
       <button data-action="/runs/demo/approve">Approve Demo</button>
       <button data-action="/workers/reference-demo">Run Worker</button>
       <button data-action="/workers/reference-demo/approve">Approve Worker</button>
+      <button data-action="/cos/tick">Tick CoS</button>
       <button id="refresh">Refresh</button>
       <button id="reset-token">Reset Token</button>
     </div>
@@ -1010,6 +1080,8 @@ function consoleHtml(): string {
       <button data-view="approvals">Approvals</button>
       <button data-view="promotions">Promotions</button>
       <button data-view="learning">Learning</button>
+      <button data-view="chiefOfStaff">Chief of Staff</button>
+      <button data-view="cadences">Cadences</button>
       <button data-view="memory">Memory</button>
       <button data-view="capabilities">Capabilities</button>
       <button data-view="capabilityCalls">Capability Calls</button>
@@ -1130,6 +1202,12 @@ function consoleHtml(): string {
             return actions;
           });
         }
+        if (view === "chiefOfStaff") {
+          return renderRows(await request("/cos/notifications"), ["severity", "kind", "summary", "status"], (row) => {
+            return row.status === "unread" ? [actionButton("Mark read", "/cos/notifications/" + row.id + "/read")] : [];
+          });
+        }
+        if (view === "cadences") return renderRows(await request("/cadences"), ["kind", "interval_seconds", "enabled", "next_due_at"]);
         if (view === "memory") return renderJson({
           collective: await request("/memory/collective"),
           coordinator: await request("/memory/individual/" + coordinatorAgentId)
