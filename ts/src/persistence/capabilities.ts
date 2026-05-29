@@ -8,6 +8,7 @@ import {
   type Tool,
   ToolSchema,
 } from "../contracts/index.js";
+import { validateCredentialHandle } from "../security/sensitive-material.js";
 import type { Database } from "./database.js";
 import { dumpJson, jsonEqual } from "./serialization.js";
 
@@ -61,6 +62,12 @@ export class CapabilityStore {
 
   save(capability: Capability): Capability {
     const parsed = CapabilitySchema.parse(capability);
+    // A capability's bound credential handle is durable state and is emitted in
+    // the registration event, so it must be a non-secret cred_* handle, never a
+    // raw token — enforced here so every persistence path is covered.
+    if (parsed.credential_handle) {
+      validateCredentialHandle(parsed.credential_handle);
+    }
 
     return this.database.transaction(() => {
       const existing = this.get(parsed.workspace_id, parsed.name);

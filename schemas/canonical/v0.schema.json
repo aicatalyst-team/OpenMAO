@@ -1457,6 +1457,18 @@
           "type": "boolean",
           "default": false
         },
+        "credential_handle": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^cred_[A-Za-z0-9_.:-]+$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "default_permission": {
           "type": "string",
           "enum": [

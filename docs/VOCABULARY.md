@@ -16,6 +16,8 @@ to the current contract model names. If a concept is not listed here, defer to
 | Tool | A concrete external system an agent wants to use: MCP server, API, database, browser, shell, file surface, SaaS product, or internal service. |
 | Capability | The OpenMAO-governed declaration that exposes a tool action with schema, provider, risk, credential handle, policy, approval, and audit semantics. |
 | Enforced capability | A side-effecting action that can only execute through an OpenMAO-managed provider or credential broker, after policy and approval checks. |
+| Credential broker | The component that resolves a non-secret `cred_*` handle to the underlying secret inside provider code at execution time; the secret never reaches a worker, capability call, result, event, or trace. |
+| Credential handle | A non-secret `cred_*` identifier a capability is bound to; the gateway requires a call's handle to match the capability's declared handle so a worker cannot select another configured secret. |
 | Cooperative integration | A worker voluntarily calls OpenMAO to record or request governance actions. Useful, but weaker than enforced capability access. |
 | System of record for AI work | OpenMAO's role: preserving the accountable work history and organizational consequences across runs, agents, tools, and frameworks. |
 | Organizational memory | The governed memory plane where individual observations, artifacts, and decisions can become trusted collective knowledge through promotion. |

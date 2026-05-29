@@ -18,15 +18,19 @@ For hobbyists, contributors, regulated/airgapped environments, and the default l
 | Collective memory | Markdown files at `.openmao/collective_memory/` |
 | Artifacts | Local filesystem at `.openmao/artifacts/` |
 | Events / traces | SQLite |
-| Capabilities | `MockProvider` only |
+| Capabilities | Mock providers by default; opt-in real GitHub issue-comment provider via `OPENMAO_GITHUB_ENABLED` |
 | Model router | `MockModelRouter` (deterministic) |
 | Secrets | None for the default demo |
 
-Properties:
+Properties (default, with no provider environment configuration):
 - No external API keys required.
 - No network access required.
 - Reproducible: same input produces the same trace.
 - Suitable for local development, demos, CI, and air-gapped evaluations.
+
+Enabling an opt-in real provider (for example `OPENMAO_GITHUB_ENABLED=1`) trades these last three
+properties for that provider only: it requires its credential and makes outbound calls. The default,
+unconfigured runtime stays mock-only, credential-free, and offline.
 
 This is the only mode supported by the current release.
 
@@ -90,7 +94,7 @@ These are properties of the OpenMAO organizational substrate, not of any deploym
 
 ## What the current release does not include
 
-- Real provider implementations for any database, object store, file store, secret store, or SaaS tool.
+- Real provider implementations for databases, object/file/secret stores, or most SaaS tools (one opt-in GitHub issue-comment provider ships in v0.4.0; broader providers remain deferred).
 - A credential manager beyond the documented invariant.
 - Multi-cloud routing logic.
 - Hosted SaaS or multi-tenant authentication.
