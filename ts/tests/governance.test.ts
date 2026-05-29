@@ -5,7 +5,11 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { CapabilityRegistryService, MockProvider } from "../src/capabilities/index.js";
+import {
+  CapabilityRegistryService,
+  MockProvider,
+  MockSideEffectProvider,
+} from "../src/capabilities/index.js";
 import {
   ApprovalPayloadSchema,
   type CapabilityCall,
@@ -15,6 +19,7 @@ import {
   type Run,
   RunSchema,
   TaskEnvelopeSchema,
+  WorkerIdentitySchema,
   WorkItemSchema,
   WorkspaceSchema,
 } from "../src/contracts/index.js";
@@ -27,6 +32,7 @@ import {
   NodeEffectStore,
   RunStore,
   TaskEnvelopeStore,
+  WorkerIdentityStore,
   WorkItemStore,
   WorkspaceStore,
 } from "../src/persistence/index.js";
@@ -100,6 +106,47 @@ async function seedCapability(
   return capability;
 }
 
+async function seedSideEffectCapability(workspaceId: string) {
+  const capability = CapabilitySchema.parse({
+    name: "mock.side_effect.record",
+    workspace_id: workspaceId,
+    description: "Record a deterministic side effect through an OpenMAO-managed provider.",
+    tool_name: "mock.side_effect",
+    canonical_input_schema: {
+      type: "object",
+      required: ["message"],
+      properties: { message: { type: "string" } },
+    },
+    canonical_output_schema: {
+      type: "object",
+      required: ["provider", "effect", "handle"],
+      properties: {
+        provider: { type: "string" },
+        effect: { type: "string" },
+        handle: { type: "string" },
+      },
+    },
+    providers: ["mock.side_effect"],
+    side_effecting: true,
+    credential_handle_required: true,
+    default_permission: "approval_required",
+  });
+  new CapabilityStore(database).save(capability);
+  return capability;
+}
+
+async function seedWorker(workspaceId: string) {
+  const worker = WorkerIdentitySchema.parse({
+    id: "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    workspace_id: workspaceId,
+    name: "Governed Worker",
+    runtime: "openmao.test.worker",
+    allowed_capabilities: ["mock.side_effect.record"],
+  });
+  new WorkerIdentityStore(database).save(worker);
+  return worker;
+}
+
 async function capabilityCall(
   run: Run,
   updates: Record<string, unknown> = {},
@@ -109,6 +156,34 @@ async function capabilityCall(
     ...(fixture.capability_call as Record<string, unknown>),
     run_id: run.id,
     workspace_id: run.workspace_id,
+    ...updates,
+  });
+}
+
+async function workerSideEffectCall(
+  run: Run,
+  workerId: string,
+  updates: Record<string, unknown> = {},
+): Promise<CapabilityCall> {
+  return CapabilityCallSchema.parse({
+    id: "capcall_99999999999999999999999999999999",
+    workspace_id: run.workspace_id,
+    run_id: run.id,
+    capability_name: "mock.side_effect.record",
+    provider: "mock.side_effect",
+    input: { message: "record governed side effect" },
+    requested_by: workerId,
+    external_actor: {
+      actor_type: "worker",
+      actor_id: workerId,
+      display_name: "Governed Worker",
+    },
+    task_id: "task_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    credential_handle: "cred_mock_side_effect",
+    side_effecting: true,
+    audit_payload: { intent: "prove enforced worker capability path" },
+    risk_level: "high",
+    idempotency_key: `${run.id}:worker_side_effect`,
     ...updates,
   });
 }
@@ -552,6 +627,89 @@ describe("TypeScript governance and capabilities", () => {
     expect(invocation.decision.outcome).toBe("block");
     expect(invocation.result?.status).toBe("blocked");
     expect(invocation.result?.error).toContain("Capability is disabled");
+    expect(provider.executedCallIds).toEqual([]);
+  });
+
+  it("gates external-worker side effects through credential handles and approval", async () => {
+    const run = await seedRunningRun({
+      to_agent: "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      allowed_capabilities: ["mock.side_effect.record"],
+    });
+    const worker = await seedWorker(run.workspace_id);
+    await seedSideEffectCapability(run.workspace_id);
+    const rawSecret = "super_secret_test_token_123";
+    const firstProvider = new MockSideEffectProvider({ cred_mock_side_effect: rawSecret });
+    const service = new CapabilityRegistryService(
+      database,
+      new GovernanceService(database, await orgRegistry()),
+      [firstProvider],
+    );
+    const call = await workerSideEffectCall(run, worker.id);
+
+    const suspended = service.invoke(call);
+    const suspendedRun = new RunStore(database).get(run.id);
+
+    expect(suspended.decision.outcome).toBe("require_approval");
+    expect(suspended.approval_id).toBe("approval_99999999999999999999999999999999");
+    expect(suspended.result).toBeUndefined();
+    expect(firstProvider.executedCallIds).toEqual([]);
+    expect(suspendedRun?.status).toBe("suspended_approval");
+
+    new ApprovalService(database).approve(suspended.approval_id ?? "", {
+      workspace_id: run.workspace_id,
+      actor: "test_operator",
+    });
+    const resumedProvider = new MockSideEffectProvider({ cred_mock_side_effect: rawSecret });
+    const resumed = new CapabilityRegistryService(
+      database,
+      new GovernanceService(database, await orgRegistry()),
+      [resumedProvider],
+    ).resumeApprovedCall(suspended.approval_id ?? "", { workspace_id: run.workspace_id });
+    const replayProvider = new MockSideEffectProvider({ cred_mock_side_effect: rawSecret });
+    const replayed = new CapabilityRegistryService(
+      database,
+      new GovernanceService(database, await orgRegistry()),
+      [replayProvider],
+    ).resumeApprovedCall(suspended.approval_id ?? "", { workspace_id: run.workspace_id });
+    const auditJson = JSON.stringify(new EventStore(database).listForWorkspace(run.workspace_id));
+
+    expect(resumed.result?.status).toBe("ok");
+    expect(resumed.result?.output).toEqual({
+      provider: "mock.side_effect",
+      effect: "recorded",
+      handle: "cred_mock_side_effect",
+    });
+    expect(replayed.result).toEqual(resumed.result);
+    expect(resumedProvider.executedCallIds).toEqual([call.id]);
+    expect(replayProvider.executedCallIds).toEqual([]);
+    expect(auditJson).toContain("cred_mock_side_effect");
+    expect(auditJson).not.toContain(rawSecret);
+  });
+
+  it("blocks external-worker side effects without a provider credential handle", async () => {
+    const run = await seedRunningRun({
+      to_agent: "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      allowed_capabilities: ["mock.side_effect.record"],
+    });
+    const worker = await seedWorker(run.workspace_id);
+    await seedSideEffectCapability(run.workspace_id);
+    const provider = new MockSideEffectProvider({ cred_mock_side_effect: "secret" });
+    const service = new CapabilityRegistryService(
+      database,
+      new GovernanceService(database, await orgRegistry()),
+      [provider],
+    );
+    const call = await workerSideEffectCall(run, worker.id, {
+      id: "capcall_77777777777777777777777777777777",
+      credential_handle: null,
+      idempotency_key: `${run.id}:worker_side_effect_missing_handle`,
+    });
+
+    const invocation = service.invoke(call);
+
+    expect(invocation.decision.outcome).toBe("block");
+    expect(invocation.decision.reason).toContain("credential handle");
+    expect(invocation.result?.status).toBe("blocked");
     expect(provider.executedCallIds).toEqual([]);
   });
 });

@@ -24,6 +24,7 @@ import {
   NodeEffectStore,
   RunStore,
   TaskEnvelopeStore,
+  WorkerIdentityStore,
 } from "../persistence/index.js";
 import type { CapabilityProvider } from "./providers.js";
 
@@ -56,6 +57,7 @@ export class CapabilityRegistryService {
   private readonly events: EventStore;
   private readonly runs: RunStore;
   private readonly tasks: TaskEnvelopeStore;
+  private readonly workers: WorkerIdentityStore;
   private readonly providers: Map<string, CapabilityProvider>;
 
   constructor(
@@ -71,6 +73,7 @@ export class CapabilityRegistryService {
     this.events = new EventStore(database);
     this.runs = new RunStore(database);
     this.tasks = new TaskEnvelopeStore(database);
+    this.workers = new WorkerIdentityStore(database);
     this.providers = new Map(providers.map((provider) => [provider.name, provider]));
   }
 
@@ -140,6 +143,17 @@ export class CapabilityRegistryService {
               capability,
               decision,
               approvalId: existingApproval.id,
+            },
+          };
+        }
+        if (existingApproval.status === "rejected") {
+          return {
+            mode: "pending",
+            invocation: {
+              call: recordedCall,
+              decision,
+              approval_id: existingApproval.id,
+              result: this.recordBlockedResult(recordedCall, "capability approval was rejected"),
             },
           };
         }
@@ -265,13 +279,70 @@ export class CapabilityRegistryService {
       return this.policyBlock(call, taskBoundaryBlockReason);
     }
 
-    if (!capability.providers.includes(call.provider)) {
-      return this.policyBlock(call, `Capability provider is not declared: ${call.provider}.`);
+    const gatewayBlockReason = this.gatewayBlockReason(call, capability);
+    if (gatewayBlockReason) {
+      return this.policyBlock(call, gatewayBlockReason);
     }
-    if (!this.providers.has(call.provider)) {
-      return this.policyBlock(call, `Capability provider is not available: ${call.provider}.`);
+    if (call.external_actor?.actor_type === "worker") {
+      return this.decideWorkerCapability(call, capability);
     }
     return this.governance.decideCapability(call, capability);
+  }
+
+  private gatewayBlockReason(call: CapabilityCall, capability: Capability): string | null {
+    if (!capability.providers.includes(call.provider)) {
+      return `Capability provider is not declared: ${call.provider}.`;
+    }
+    if (!this.providers.has(call.provider)) {
+      return `Capability provider is not available: ${call.provider}.`;
+    }
+    if (capability.credential_handle_required && !call.credential_handle) {
+      return `Capability requires a credential handle: ${call.capability_name}.`;
+    }
+    if (capability.side_effecting && !call.side_effecting) {
+      return `Capability call must be marked side-effecting: ${call.capability_name}.`;
+    }
+    return null;
+  }
+
+  private decideWorkerCapability(call: CapabilityCall, capability: Capability): PolicyDecision {
+    const actorId = call.external_actor?.actor_id;
+    if (actorId !== call.requested_by) {
+      return this.policyBlock(call, "External worker actor does not match capability caller.");
+    }
+
+    const worker = this.workers.get(actorId);
+    if (!worker || worker.workspace_id !== call.workspace_id) {
+      return this.policyBlock(call, `Worker identity not found in workspace: ${actorId}.`);
+    }
+    if (worker.status !== "enabled") {
+      return this.policyBlock(call, `Worker identity is disabled: ${worker.id}.`);
+    }
+    if (capability.default_permission === "disabled") {
+      return this.policyBlock(call, `Capability is disabled: ${call.capability_name}.`);
+    }
+    if (!worker.allowed_capabilities.includes(call.capability_name)) {
+      return this.policyBlock(
+        call,
+        `Worker identity lacks capability grant: ${call.capability_name}.`,
+      );
+    }
+
+    const requiresApproval =
+      capability.default_permission === "approval_required" || call.risk_level === "high";
+
+    return PolicyDecisionSchema.parse({
+      id: newId("decision"),
+      workspace_id: call.workspace_id,
+      run_id: call.run_id,
+      action: "capability.call",
+      target_type: "capability_call",
+      target_id: call.id,
+      outcome: requiresApproval ? "require_approval" : "allow",
+      reason: requiresApproval
+        ? `Worker capability call requires approval before execution: ${call.capability_name}.`
+        : `Worker capability is enabled and granted: ${call.capability_name}.`,
+    });
   }
 
   private taskBoundaryBlockReason(call: CapabilityCall): string | null {
