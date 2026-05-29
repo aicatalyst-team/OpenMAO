@@ -26,6 +26,12 @@ import {
   TaskEnvelopeStore,
   WorkerIdentityStore,
 } from "../persistence/index.js";
+import {
+  assertNoSensitiveMaterial,
+  assertNoSensitiveString,
+  safeErrorMessage,
+  validateCredentialHandle,
+} from "../security/sensitive-material.js";
 import type { CapabilityProvider } from "./providers.js";
 
 export type CapabilityInvocation = {
@@ -443,6 +449,10 @@ export class CapabilityRegistryService {
       });
       if (result.status === "ok") {
         this.validatePayload(result.output, capability.canonical_output_schema, "output");
+        assertNoSensitiveMaterial(result.output, "capability_result.output");
+        assertNoSensitiveMaterial(result.artifacts, "capability_result.artifacts");
+      } else if (result.error) {
+        assertNoSensitiveString(result.error, "capability_result.error");
       }
       return this.recordResultEvent(result, `${call.id}:completed`);
     } catch (error) {
@@ -454,7 +464,8 @@ export class CapabilityRegistryService {
           call_id: call.id,
           node_effect_id: effect.id,
           status: "failed",
-          error: error instanceof Error ? error.message : String(error),
+          error:
+            error instanceof Error ? safeErrorMessage(error.message) : "capability provider failed",
         }),
         `${call.id}:completed`,
       );
@@ -684,47 +695,4 @@ function validateSchemaValue(value: unknown, schema: Record<string, unknown>, pa
     return;
   }
   throw new CapabilityRegistryError(`capability ${path} schema type is unsupported`);
-}
-
-const SENSITIVE_KEY_PATTERN =
-  /(?:password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|bearer|private[_-]?key|client[_-]?secret|credential[_-]?value)/i;
-const SENSITIVE_VALUE_PATTERN =
-  /(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{8,}|xox[baprs]-[A-Za-z0-9-]{8,}|Bearer\s+\S+|-----BEGIN [^-]+PRIVATE KEY-----|(?:secret|token|password|api[_-]?key)[A-Za-z0-9_:-]{6,})/i;
-const CREDENTIAL_HANDLE_PATTERN = /^cred_[A-Za-z0-9_.:-]+$/;
-
-function validateCredentialHandle(handle: string): void {
-  if (!CREDENTIAL_HANDLE_PATTERN.test(handle)) {
-    throw new CapabilityRegistryError("credential handle must be a non-secret cred_* identifier");
-  }
-  assertNoSensitiveString(handle, "credential_handle");
-}
-
-function assertNoSensitiveMaterial(value: unknown, path: string): void {
-  if (value === null || value === undefined) {
-    return;
-  }
-  if (typeof value === "string") {
-    assertNoSensitiveString(value, path);
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (const [index, item] of value.entries()) {
-      assertNoSensitiveMaterial(item, `${path}[${index}]`);
-    }
-    return;
-  }
-  if (typeof value === "object") {
-    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      if (SENSITIVE_KEY_PATTERN.test(key)) {
-        throw new CapabilityRegistryError(`capability ${path} contains sensitive key: ${key}`);
-      }
-      assertNoSensitiveMaterial(item, `${path}.${key}`);
-    }
-  }
-}
-
-function assertNoSensitiveString(value: string, path: string): void {
-  if (SENSITIVE_VALUE_PATTERN.test(value)) {
-    throw new CapabilityRegistryError(`capability ${path} contains secret-shaped material`);
-  }
 }

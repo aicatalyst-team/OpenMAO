@@ -28,6 +28,10 @@ import {
   WorkerOutcomeStore,
   WorkItemStore,
 } from "../persistence/index.js";
+import {
+  assertNoSensitiveMaterial,
+  assertNoSensitiveString,
+} from "../security/sensitive-material.js";
 
 type CreateWorkInput = {
   id?: string | null;
@@ -278,6 +282,9 @@ export class WorkService {
       if (workItem.workspace_id !== input.workspace_id) {
         throw new Error(`work item not found in workspace: ${envelope.work_item_id}`);
       }
+      assertNoSensitiveString(input.summary, "worker_outcome.summary");
+      assertNoSensitiveMaterial(input.output ?? {}, "worker_outcome.output");
+      assertNoSensitiveMaterial(input.artifacts ?? [], "worker_outcome.artifacts");
 
       const outcome = WorkerOutcomeSchema.parse({
         id: input.id ?? newId("outcome"),
@@ -382,6 +389,7 @@ export class WorkService {
           throw new Error(`run not found in workspace: ${input.run_id}`);
         }
       }
+      assertNoSensitiveMaterial(input.input ?? {}, "bounded_work_envelope.input");
       const envelopeId = input.id ?? newId("envelope");
       const taskEnvelopeId = input.run_id
         ? (input.task_envelope_id ?? this.taskEnvelopeIdForEnvelope(envelopeId))

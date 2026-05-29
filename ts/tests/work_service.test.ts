@@ -235,6 +235,72 @@ describe("v1 work service", () => {
     ).toThrow("exceed worker grants");
   });
 
+  it("rejects secret-shaped external worker envelope and outcome material", async () => {
+    const workspace = await seedWorkspace();
+    const fixture = await loadFixture();
+    const worker = new WorkerIdentityStore(database).save(
+      WorkerIdentitySchema.parse(fixture.worker_identity),
+    );
+    const service = new WorkService(database);
+    const work = service.createWork({
+      id: "work_29292929292929292929292929292929",
+      workspace_id: workspace.id,
+      title: "Secret hygiene work",
+      objective: "Prove external worker material is rejected before persistence.",
+      owner: "operator:local",
+      actor: "operator:local",
+      idempotency_key: "work:secret-hygiene:create",
+    });
+
+    expect(() =>
+      service.createBoundedEnvelope({
+        id: "envelope_30303030303030303030303030303030",
+        workspace_id: workspace.id,
+        work_item_id: work.id,
+        worker_id: worker.id,
+        issued_by: {
+          actor_type: "operator",
+          actor_id: "operator:local",
+          display_name: null,
+        },
+        allowed_capabilities: ["mock.research_lookup"],
+        input: { api_key: "sk-testsecret123456" },
+        idempotency_key: "work:secret-hygiene:bad-envelope",
+      }),
+    ).toThrow("sensitive key");
+
+    const envelope = service.createBoundedEnvelope({
+      id: "envelope_31313131313131313131313131313131",
+      workspace_id: workspace.id,
+      work_item_id: work.id,
+      worker_id: worker.id,
+      issued_by: {
+        actor_type: "operator",
+        actor_id: "operator:local",
+        display_name: null,
+      },
+      allowed_capabilities: ["mock.research_lookup"],
+      idempotency_key: "work:secret-hygiene:good-envelope",
+    });
+
+    expect(() =>
+      service.submitWorkerOutcome({
+        id: "outcome_32323232323232323232323232323232",
+        workspace_id: workspace.id,
+        envelope_id: envelope.id,
+        worker_id: worker.id,
+        status: "completed",
+        summary: "Prepared the governed update.",
+        output: { api_key: "sk-testsecret123456" },
+        idempotency_key: "work:secret-hygiene:bad-outcome",
+      }),
+    ).toThrow("sensitive key");
+    expect(new BoundedWorkEnvelopeStore(database).listForWorkItem(workspace.id, work.id)).toEqual([
+      envelope,
+    ]);
+    expect(new WorkerOutcomeStore(database).listForWorkItem(workspace.id, work.id)).toEqual([]);
+  });
+
   it("rejects cross-workspace work lifecycle writes at the service boundary", async () => {
     const workspace = await seedWorkspace();
     const otherWorkspace = new WorkspaceStore(database).save(

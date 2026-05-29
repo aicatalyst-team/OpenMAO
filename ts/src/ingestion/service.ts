@@ -16,6 +16,10 @@ import {
   WorkItemStore,
   WorkspaceStore,
 } from "../persistence/index.js";
+import {
+  assertNoSensitiveMaterial,
+  assertNoSensitiveString,
+} from "../security/sensitive-material.js";
 
 type RecordIngestionInput = {
   id?: string | null;
@@ -101,9 +105,13 @@ export class IngestionService {
     if (!input.idempotency_key.trim()) {
       throw new Error("ingestion idempotency key is required");
     }
+    assertNoSensitiveString(input.idempotency_key, "ingestion.idempotency_key");
     if (!input.source.provider.trim()) {
       throw new Error("ingestion source provider is required");
     }
+    assertNoSensitiveMaterial(input.source, "ingestion.source");
+    assertNoSensitiveMaterial(input.actor, "ingestion.actor");
+    assertNoSensitiveMaterial(input.payload ?? {}, "ingestion.payload");
     const sourceId = input.source.external_id?.trim() ?? "";
     const sourceUrl = input.source.external_url?.trim() ?? "";
     if (!sourceId && !sourceUrl) {

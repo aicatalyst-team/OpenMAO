@@ -21,7 +21,7 @@ rm -rf .openmao && npm run cli -- worker demo && npm run cli -- approvals approv
 
 Latest verification on 2026-05-29:
 
-- `make check` passed: TypeScript lint, typecheck, 65 Vitest tests, and public hygiene scan.
+- `make check` passed: TypeScript lint, typecheck, 68 Vitest tests, and public hygiene scan.
 - `rm -rf .openmao && make demo && make demo-approve && rm -rf .openmao` passed.
 - `rm -rf .openmao && npm run cli -- worker demo && npm run cli -- approvals approve approval_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb && rm -rf .openmao` passed.
 
@@ -39,7 +39,7 @@ The default v0 demo and the v1 worker demo require no live external credentials 
 | Resume | Approval resumes from persisted capability-call state after process restart. | `ts/tests/governance.test.ts`, `ts/tests/surfaces.test.ts` |
 | Idempotency | Approved provider execution happens at most once. | `ts/tests/governance.test.ts`, `ts/tests/reference_worker.test.ts` |
 | Rejection | Rejected capability approvals produce an explicit blocked result immediately. | `ts/src/capabilities/registry.ts`, `ts/src/runtime/capabilities.ts`, `ts/tests/governance.test.ts`, `ts/tests/surfaces.test.ts` |
-| Credential boundary | Workers receive credential handles, not raw credential values, and secret-shaped capability material is rejected before persistence. | `ts/tests/contracts.test.ts`, `ts/tests/governance.test.ts`, `ts/src/capabilities/providers.ts`, `ts/src/capabilities/registry.ts` |
+| Credential boundary | Workers receive credential handles, not raw credential values, and secret-shaped capability, ingestion, envelope, outcome, and provider-result material is rejected before persistence. | `ts/tests/contracts.test.ts`, `ts/tests/governance.test.ts`, `ts/tests/ingestion.test.ts`, `ts/tests/work_service.test.ts`, `ts/src/capabilities/providers.ts`, `ts/src/capabilities/registry.ts`, `ts/src/security/sensitive-material.ts` |
 | Grants | Worker identity must be enabled, granted the capability, and bounded envelopes cannot advertise ungranted capabilities. | `ts/tests/governance.test.ts`, `ts/tests/work_service.test.ts`, `ts/src/capabilities/registry.ts`, `ts/src/work/service.ts` |
 | Ingestion | External worker ingestion is workspace-scoped, explicitly identified, idempotent, and projected through services. | `ts/tests/ingestion.test.ts`, `ts/tests/reference_worker.test.ts`, `ts/tests/surfaces.test.ts` |
 | Workspace isolation | Workspace-scoped child reads and lifecycle writes prevent cross-workspace envelope, outcome, ingestion, assignment, status, and review leakage. | `ts/src/persistence/work.ts`, `ts/src/work/service.ts`, `ts/src/api/server.ts`, `ts/src/cli.ts`, `ts/tests/work_service.test.ts`, `ts/tests/surfaces.test.ts` |

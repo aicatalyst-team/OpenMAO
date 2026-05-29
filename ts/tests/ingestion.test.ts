@@ -141,4 +141,30 @@ describe("v1 ingestion service", () => {
       }),
     ).toThrow("worker actor");
   });
+
+  it("rejects secret-shaped ingestion payloads before persistence", async () => {
+    const fixture = await loadFixture();
+    const workspaceId = (fixture.workspace as { id: string }).id;
+    const workItemId = (fixture.work_item as { id: string }).id;
+    const service = new IngestionService(database);
+
+    expect(() =>
+      service.record({
+        id: "ingest_cccccccccccccccccccccccccccccccc",
+        workspace_id: workspaceId,
+        source: { provider: "openmao", external_id: "reference-worker", external_url: null },
+        actor: {
+          actor_type: "worker",
+          actor_id: "worker_12121212121212121212121212121212",
+          display_name: null,
+        },
+        kind: "trace",
+        target_work_item_id: workItemId,
+        payload: { api_key: "sk-testsecret123456" },
+        idempotency_key: "reference-worker:trace:redacted-payload",
+      }),
+    ).toThrow("sensitive key");
+    expect(new IngestionRecordStore(database).listForWorkspace(workspaceId)).toEqual([]);
+    expect(new EventStore(database).listForWorkspace(workspaceId)).toEqual([]);
+  });
 });
