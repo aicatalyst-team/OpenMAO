@@ -7,6 +7,8 @@ import {
   utcNow,
   type WorkerIdentity,
   WorkerIdentitySchema,
+  type WorkerOutcome,
+  WorkerOutcomeSchema,
   type WorkItem,
   WorkItemSchema,
 } from "../contracts/index.js";
@@ -15,6 +17,7 @@ import {
   BoundedWorkEnvelopeStore,
   EventStore,
   WorkerIdentityStore,
+  WorkerOutcomeStore,
   WorkItemStore,
 } from "../persistence/index.js";
 
@@ -60,6 +63,29 @@ type SetWorkStatusInput = {
   idempotency_key?: string | null;
 };
 
+type SubmitWorkerOutcomeInput = {
+  id?: string | null;
+  workspace_id: string;
+  envelope_id: string;
+  worker_id: string;
+  status: WorkerOutcome["status"];
+  summary: string;
+  output?: Record<string, unknown>;
+  artifacts?: WorkerOutcome["artifacts"];
+  memory_writes?: string[];
+  promotion_candidates?: string[];
+  actor?: string | null;
+  idempotency_key: string;
+};
+
+type ReviewWorkInput = {
+  work_item_id: string;
+  decision: "accepted" | "changes_requested" | "rejected";
+  actor: string;
+  notes?: string | null;
+  idempotency_key?: string | null;
+};
+
 type CreateBoundedEnvelopeInput = {
   id?: string | null;
   workspace_id: string;
@@ -83,12 +109,14 @@ function actorString(actor: ExternalActorRef): string {
 export class WorkService {
   private readonly workItems: WorkItemStore;
   private readonly workers: WorkerIdentityStore;
+  private readonly outcomes: WorkerOutcomeStore;
   private readonly boundedEnvelopes: BoundedWorkEnvelopeStore;
   private readonly events: EventStore;
 
   constructor(private readonly database: Database) {
     this.workItems = new WorkItemStore(database);
     this.workers = new WorkerIdentityStore(database);
+    this.outcomes = new WorkerOutcomeStore(database);
     this.boundedEnvelopes = new BoundedWorkEnvelopeStore(database);
     this.events = new EventStore(database);
   }
@@ -195,6 +223,89 @@ export class WorkService {
           refs: [updated.id],
         }),
         idempotency_key: input.idempotency_key ?? `work:${updated.id}:status:${updated.status}`,
+      });
+      return updated;
+    });
+  }
+
+  submitWorkerOutcome(input: SubmitWorkerOutcomeInput): WorkerOutcome {
+    return this.database.transaction(() => {
+      const envelope = this.boundedEnvelopes.get(input.envelope_id);
+      if (!envelope || envelope.workspace_id !== input.workspace_id) {
+        throw new Error(`bounded work envelope not found in workspace: ${input.envelope_id}`);
+      }
+      if (envelope.worker_id !== input.worker_id) {
+        throw new Error("worker outcome does not match bounded envelope worker");
+      }
+      const workItem = this.requireWorkItem(envelope.work_item_id);
+      if (workItem.workspace_id !== input.workspace_id) {
+        throw new Error(`work item not found in workspace: ${envelope.work_item_id}`);
+      }
+
+      const outcome = WorkerOutcomeSchema.parse({
+        id: input.id ?? newId("outcome"),
+        workspace_id: input.workspace_id,
+        work_item_id: workItem.id,
+        envelope_id: envelope.id,
+        worker_id: input.worker_id,
+        status: input.status,
+        summary: input.summary,
+        artifacts: input.artifacts ?? [],
+        memory_writes: input.memory_writes ?? [],
+        promotion_candidates: input.promotion_candidates ?? [],
+        output: input.output ?? {},
+        idempotency_key: input.idempotency_key,
+        submitted_at: utcNow(),
+      });
+      const saved = this.outcomes.record(outcome);
+      const nextStatus = saved.status === "completed" ? "review" : saved.status;
+      if (workItem.status !== nextStatus) {
+        this.workItems.update(WorkItemSchema.parse({ ...workItem, status: nextStatus }));
+      }
+      this.events.append({
+        workspace_id: saved.workspace_id,
+        run_id: envelope.run_id,
+        kind: "work.outcome_submitted",
+        actor: input.actor ?? `worker:${saved.worker_id}`,
+        payload: EventPayloadSchema.parse({
+          data: {
+            worker_outcome: saved,
+            work_item_status: nextStatus,
+          },
+          refs: [saved.id, saved.work_item_id, saved.envelope_id, saved.worker_id],
+        }),
+        idempotency_key: `${saved.id}:event`,
+      });
+      return saved;
+    });
+  }
+
+  reviewWork(input: ReviewWorkInput): WorkItem {
+    return this.database.transaction(() => {
+      const current = this.requireWorkItem(input.work_item_id);
+      const nextStatus =
+        input.decision === "accepted"
+          ? "done"
+          : input.decision === "rejected"
+            ? "failed"
+            : "in_progress";
+      const updated = this.workItems.update(
+        WorkItemSchema.parse({ ...current, status: nextStatus }),
+      );
+      this.events.append({
+        workspace_id: updated.workspace_id,
+        kind: "work.reviewed",
+        actor: input.actor,
+        payload: EventPayloadSchema.parse({
+          data: {
+            work_item_id: updated.id,
+            decision: input.decision,
+            status: updated.status,
+            notes: input.notes ?? null,
+          },
+          refs: [updated.id],
+        }),
+        idempotency_key: input.idempotency_key ?? `work:${updated.id}:review:${input.decision}`,
       });
       return updated;
     });

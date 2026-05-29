@@ -16,6 +16,7 @@ import {
   RunSchema,
   ToolSchema,
   WorkerIdentitySchema,
+  WorkerOutcomeSchema,
   WorkItemSchema,
   type Workspace,
   WorkspaceSchema,
@@ -33,6 +34,8 @@ import {
   RunStore,
   ToolStore,
   WorkerIdentityStore,
+  WorkerOutcomeConflictError,
+  WorkerOutcomeStore,
   WorkItemStore,
   WorkspaceConflictError,
   WorkspaceStore,
@@ -154,6 +157,7 @@ describe("TypeScript persistence", () => {
         "runs",
         "task_envelopes",
         "bounded_work_envelopes",
+        "worker_outcomes",
         "checkpoints",
         "approval_requests",
         "policies",
@@ -189,30 +193,45 @@ describe("TypeScript persistence", () => {
     );
   });
 
-  it("persists v1 worker, tool, bounded envelope, and ingestion records idempotently", async () => {
+  it("persists v1 worker, tool, bounded envelope, outcome, and ingestion records idempotently", async () => {
     const run = await seedQueuedRun();
     const fixture = await loadFixture();
     const workItem = new WorkItemStore(database).save(WorkItemSchema.parse(fixture.work_item));
     const tool = ToolSchema.parse(fixture.tool);
     const worker = WorkerIdentitySchema.parse(fixture.worker_identity);
     const envelope = BoundedWorkEnvelopeSchema.parse(fixture.bounded_work_envelope);
+    const outcome = WorkerOutcomeSchema.parse(fixture.worker_outcome);
     const ingestion = IngestionRecordSchema.parse(fixture.ingestion_record);
 
     const tools = new ToolStore(database);
     const workers = new WorkerIdentityStore(database);
     const envelopes = new BoundedWorkEnvelopeStore(database);
+    const outcomes = new WorkerOutcomeStore(database);
     const ingestionRecords = new IngestionRecordStore(database);
 
     expect(tools.save(tool)).toEqual(tool);
     expect(workers.save(worker)).toEqual(worker);
     expect(envelopes.save(envelope)).toEqual(envelope);
+    expect(outcomes.record(outcome)).toEqual(outcome);
     expect(ingestionRecords.record(ingestion)).toEqual(ingestion);
 
     expect(envelope.run_id).toBe(run.id);
     expect(tools.listForWorkspace(tool.workspace_id)).toEqual([tool]);
     expect(workers.listForWorkspace(worker.workspace_id)).toEqual([worker]);
     expect(envelopes.listForWorkItem(workItem.id)).toEqual([envelope]);
+    expect(outcomes.listForWorkItem(workItem.id)).toEqual([outcome]);
+    expect(outcomes.record(outcome)).toEqual(outcome);
+    expect(() =>
+      outcomes.record(
+        WorkerOutcomeSchema.parse({
+          ...outcome,
+          id: "outcome_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          summary: "Changed",
+        }),
+      ),
+    ).toThrow(WorkerOutcomeConflictError);
     expect(ingestionRecords.listForWorkItem(workItem.id)).toEqual([ingestion]);
+    expect(ingestionRecords.listForWorkspace(workItem.workspace_id)).toEqual([ingestion]);
     expect(ingestionRecords.record(ingestion)).toEqual(ingestion);
     expect(() =>
       ingestionRecords.record(

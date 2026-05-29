@@ -280,6 +280,24 @@ export const AgentOutcomeSchema = z
   })
   .strict();
 
+export const WorkerOutcomeSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    work_item_id: CanonicalIdSchema,
+    envelope_id: CanonicalIdSchema,
+    worker_id: CanonicalIdSchema,
+    status: z.enum(["completed", "blocked", "failed"]),
+    summary: z.string(),
+    artifacts: z.array(ArtifactRefSchema).default([]),
+    memory_writes: z.array(CanonicalIdSchema).default([]),
+    promotion_candidates: z.array(CanonicalIdSchema).default([]),
+    output: recordSchema.default({}),
+    idempotency_key: z.string(),
+    submitted_at: UtcTimestampSchema,
+  })
+  .strict();
+
 export const CapabilitySchema = z
   .object({
     name: z.string(),
@@ -565,6 +583,9 @@ export const WorldModelSnapshotSchema = z
     active_work: z.array(CanonicalIdSchema).default([]),
     blockers: z.array(z.string()).default([]),
     pending_approvals: z.array(CanonicalIdSchema).default([]),
+    pending_reviews: z.array(CanonicalIdSchema).default([]),
+    external_workers: z.array(CanonicalIdSchema).default([]),
+    recent_ingestions: z.array(CanonicalIdSchema).default([]),
     capability_gaps: z.array(z.string()).default([]),
     recent_events: z.array(CanonicalIdSchema).default([]),
     latest_run_status: RunStatusSchema.nullable().default(null),
@@ -588,6 +609,7 @@ export const canonicalModelSchemas = {
   TaskEnvelope: TaskEnvelopeSchema,
   BoundedWorkEnvelope: BoundedWorkEnvelopeSchema,
   AgentOutcome: AgentOutcomeSchema,
+  WorkerOutcome: WorkerOutcomeSchema,
   Capability: CapabilitySchema,
   CapabilityCall: CapabilityCallSchema,
   CapabilityResult: CapabilityResultSchema,
@@ -644,6 +666,7 @@ export type Run = z.infer<typeof RunSchema>;
 export type TaskEnvelope = z.infer<typeof TaskEnvelopeSchema>;
 export type BoundedWorkEnvelope = z.infer<typeof BoundedWorkEnvelopeSchema>;
 export type AgentOutcome = z.infer<typeof AgentOutcomeSchema>;
+export type WorkerOutcome = z.infer<typeof WorkerOutcomeSchema>;
 export type Capability = z.infer<typeof CapabilitySchema>;
 export type CapabilityProviderRef = z.infer<typeof CapabilityProviderRefSchema>;
 export type CapabilityCall = z.infer<typeof CapabilityCallSchema>;

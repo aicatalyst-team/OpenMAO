@@ -105,6 +105,9 @@ describe("TypeScript operator surfaces", () => {
     const assignOutput = capture();
     const envelopeOutput = capture();
     const envelopesOutput = capture();
+    const outcomeOutput = capture();
+    const outcomesOutput = capture();
+    const reviewOutput = capture();
 
     expect(await runCli(["init"], { dbPath, write: initOutput.write })).toBe(0);
     expect(
@@ -181,6 +184,40 @@ describe("TypeScript operator surfaces", () => {
         write: envelopesOutput.write,
       }),
     ).toBe(0);
+    expect(
+      await runCli(
+        [
+          "work",
+          "outcome",
+          "work_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "--id",
+          "outcome_dddddddddddddddddddddddddddddddd",
+          "--envelope",
+          "envelope_cccccccccccccccccccccccccccccccc",
+          "--worker",
+          "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "--status",
+          "completed",
+          "--summary",
+          "Prepared the governed update.",
+          "--output",
+          '{"ready":true}',
+        ],
+        { dbPath, write: outcomeOutput.write },
+      ),
+    ).toBe(0);
+    expect(
+      await runCli(["work", "outcomes", "work_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"], {
+        dbPath,
+        write: outcomesOutput.write,
+      }),
+    ).toBe(0);
+    expect(
+      await runCli(["work", "review", "work_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "accepted"], {
+        dbPath,
+        write: reviewOutput.write,
+      }),
+    ).toBe(0);
 
     expect(JSON.parse(workerOutput.lines[0] ?? "{}").id).toBe(
       "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -191,6 +228,9 @@ describe("TypeScript operator surfaces", () => {
       "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     );
     expect(JSON.parse(envelopesOutput.lines[0] ?? "[]")).toHaveLength(1);
+    expect(JSON.parse(outcomeOutput.lines[0] ?? "{}").status).toBe("completed");
+    expect(JSON.parse(outcomesOutput.lines[0] ?? "[]")).toHaveLength(1);
+    expect(JSON.parse(reviewOutput.lines[0] ?? "{}").status).toBe("done");
   });
 
   it("serves demo, approvals, world, and console over HTTP", async () => {
@@ -376,6 +416,26 @@ describe("TypeScript operator surfaces", () => {
           input: { topic: "governed update" },
         }),
       }).then((response) => response.json())) as { worker_id: string; work_item_id: string };
+      const outcome = (await fetch(`${baseUrl}/work/${work.id}/outcomes`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          id: "outcome_dddddddddddddddddddddddddddddddd",
+          envelope_id: "envelope_cccccccccccccccccccccccccccccccc",
+          worker_id: worker.id,
+          status: "completed",
+          summary: "Prepared the governed update.",
+          output: { ready: true },
+        }),
+      }).then((response) => response.json())) as { status: string; work_item_id: string };
+      const outcomes = (await fetch(`${baseUrl}/work/${work.id}/outcomes`, {
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as unknown[];
+      const reviewed = (await fetch(`${baseUrl}/work/${work.id}/review`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({ decision: "accepted", notes: "Looks good." }),
+      }).then((response) => response.json())) as { status: string };
       const envelopes = (await fetch(`${baseUrl}/work/${work.id}/envelopes`, {
         headers: operatorHeaders,
       }).then((response) => response.json())) as unknown[];
@@ -389,9 +449,19 @@ describe("TypeScript operator surfaces", () => {
       expect(assigned.status).toBe("in_progress");
       expect(envelope.worker_id).toBe(worker.id);
       expect(envelope.work_item_id).toBe(work.id);
+      expect(outcome.status).toBe("completed");
+      expect(outcome.work_item_id).toBe(work.id);
+      expect(outcomes).toHaveLength(1);
+      expect(reviewed.status).toBe("done");
       expect(envelopes).toHaveLength(1);
       expect(events.map((event) => event.kind)).toEqual(
-        expect.arrayContaining(["worker.registered", "work.created", "work.assigned"]),
+        expect.arrayContaining([
+          "worker.registered",
+          "work.created",
+          "work.assigned",
+          "work.outcome_submitted",
+          "work.reviewed",
+        ]),
       );
     } finally {
       await new Promise<void>((resolve, reject) => {

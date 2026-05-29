@@ -38,6 +38,7 @@ import {
   validateId,
   validateUtcTimestamp,
   WorkerIdentitySchema,
+  WorkerOutcomeSchema,
   WorkItemSchema,
   WorkspaceSchema,
   WorldModelSnapshotSchema,
@@ -70,6 +71,7 @@ describe("canonical TypeScript contracts", () => {
     TaskEnvelopeSchema.parse(fixture.task_envelope);
     BoundedWorkEnvelopeSchema.parse(fixture.bounded_work_envelope);
     AgentOutcomeSchema.parse(fixture.agent_outcome);
+    WorkerOutcomeSchema.parse(fixture.worker_outcome);
     CapabilitySchema.parse(fixture.capability);
     CapabilityCallSchema.parse(fixture.capability_call);
     CapabilityResultSchema.parse(fixture.capability_result);

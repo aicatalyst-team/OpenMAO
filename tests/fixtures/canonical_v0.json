@@ -24,6 +24,32 @@
     "task_id": "task_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "trace_ref": "trace_33333333333333333333333333333333"
   },
+  "worker_outcome": {
+    "artifacts": [
+      {
+        "artifact_id": "artifact_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "content_ref": "artifacts/onboarding_brief.md"
+      }
+    ],
+    "envelope_id": "envelope_56565656565656565656565656565656",
+    "id": "outcome_78787878787878787878787878787878",
+    "idempotency_key": "worker_12121212121212121212121212121212:outcome:onboarding",
+    "memory_writes": [
+      "mem_dddddddddddddddddddddddddddddddd"
+    ],
+    "output": {
+      "brief_ready": true
+    },
+    "promotion_candidates": [
+      "promo_cccccccccccccccccccccccccccccccc"
+    ],
+    "status": "completed",
+    "submitted_at": "2026-05-27T15:20:09Z",
+    "summary": "External worker completed the bounded onboarding task.",
+    "work_item_id": "work_88888888888888888888888888888888",
+    "worker_id": "worker_12121212121212121212121212121212",
+    "workspace_id": "ws_11111111111111111111111111111111"
+  },
   "agents": [
     {
       "id": "agent_55555555555555555555555555555555",
@@ -500,11 +526,18 @@
     "blockers": [],
     "cache_only": true,
     "capability_gaps": [],
+    "external_workers": [
+      "worker_12121212121212121212121212121212"
+    ],
     "generated_at": "2026-05-27T15:20:10Z",
     "id": "world_44444444444444444444444444444444",
     "latest_run_status": "suspended_approval",
     "pending_approvals": [
       "approval_11111111111111111111111111111111"
+    ],
+    "pending_reviews": [],
+    "recent_ingestions": [
+      "ingest_34343434343434343434343434343434"
     ],
     "recent_events": [
       "evt_11111111111111111111111111111111"

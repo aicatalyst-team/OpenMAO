@@ -11,6 +11,7 @@ import {
   ArtifactSchema,
   CapabilitySchema,
   GoalSchema,
+  IngestionRecordSchema,
   MemoryEntrySchema,
   ModelRequestSchema,
   OrgChangeProposalSchema,
@@ -19,6 +20,7 @@ import {
   RunSchema,
   TaskEnvelopeSchema,
   TraceSchema,
+  WorkerIdentitySchema,
   WorkItemSchema,
   WorkspaceSchema,
 } from "../src/contracts/index.js";
@@ -33,10 +35,12 @@ import {
   Database,
   EventStore,
   GoalStore,
+  IngestionRecordStore,
   OrgChangeProposalStore,
   RunStore,
   TaskEnvelopeStore,
   TraceStore,
+  WorkerIdentityStore,
   WorkItemStore,
   WorkspaceStore,
   WorldModelSnapshotStore,
@@ -88,6 +92,8 @@ async function seedWorldInputs(run: Run): Promise<void> {
       run_id: run.id,
     }),
   );
+  new WorkerIdentityStore(database).save(WorkerIdentitySchema.parse(fixture.worker_identity));
+  new IngestionRecordStore(database).record(IngestionRecordSchema.parse(fixture.ingestion_record));
   new CapabilityStore(database).save(CapabilitySchema.parse(fixture.capability));
 }
 
@@ -286,10 +292,18 @@ describe("TypeScript memory promotion and world model", () => {
     expect(suspended.active_goals).toEqual(["goal_77777777777777777777777777777777"]);
     expect(suspended.active_work).toEqual(["work_88888888888888888888888888888888"]);
     expect(suspended.pending_approvals).toEqual([approval.id]);
+    expect(suspended.external_workers).toEqual(["worker_12121212121212121212121212121212"]);
+    expect(suspended.pending_reviews).toEqual([]);
+    expect(suspended.recent_ingestions).toEqual(["ingest_34343434343434343434343434343434"]);
     expect(suspended.capability_gaps).toEqual([]);
     expect(suspended.recent_events.at(-1)).toBe(
       new EventStore(database).listForRun(run.workspace_id, run.id).at(-1)?.id,
     );
+
+    new WorkItemStore(database).setStatus("work_88888888888888888888888888888888", "review");
+    const review = service.rebuild(run.workspace_id, run.id);
+
+    expect(review.pending_reviews).toEqual(["work_88888888888888888888888888888888"]);
 
     new ApprovalService(database).approve(approval.id, { workspace_id: run.workspace_id });
     new WorkItemStore(database).setStatus("work_88888888888888888888888888888888", "done");
@@ -305,6 +319,7 @@ describe("TypeScript memory promotion and world model", () => {
     expect(completed.latest_run_status).toBe("completed");
     expect(completed.active_work).toEqual([]);
     expect(completed.pending_approvals).toEqual([]);
+    expect(completed.pending_reviews).toEqual([]);
     expect(workspaceSnapshot.run_id).toBeNull();
     expect(workspaceSnapshot.latest_run_status).toBe("completed");
     expect(workspaceSnapshot.source_run_seq).toBeNull();

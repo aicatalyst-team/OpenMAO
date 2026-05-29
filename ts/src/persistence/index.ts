@@ -74,6 +74,8 @@ export {
   TaskEnvelopeStore,
   WorkerIdentityConflictError,
   WorkerIdentityStore,
+  WorkerOutcomeConflictError,
+  WorkerOutcomeStore,
   WorkItemConflictError,
   WorkItemStore,
 } from "./work.js";

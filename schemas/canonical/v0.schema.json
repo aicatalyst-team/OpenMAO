@@ -1254,6 +1254,106 @@
       ],
       "additionalProperties": false
     },
+    "WorkerOutcome": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "workspace_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "work_item_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "envelope_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "worker_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "completed",
+            "blocked",
+            "failed"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "artifact_id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+              },
+              "content_ref": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "artifact_id"
+            ],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "memory_writes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+          },
+          "default": []
+        },
+        "promotion_candidates": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+          },
+          "default": []
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": {},
+          "default": {}
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "submitted_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|\\+00:00)$"
+        }
+      },
+      "required": [
+        "id",
+        "workspace_id",
+        "work_item_id",
+        "envelope_id",
+        "worker_id",
+        "status",
+        "summary",
+        "idempotency_key",
+        "submitted_at"
+      ],
+      "additionalProperties": false
+    },
     "Capability": {
       "type": "object",
       "properties": {
@@ -2664,6 +2764,30 @@
           "default": []
         },
         "pending_approvals": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+          },
+          "default": []
+        },
+        "pending_reviews": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+          },
+          "default": []
+        },
+        "external_workers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+          },
+          "default": []
+        },
+        "recent_ingestions": {
           "type": "array",
           "items": {
             "type": "string",

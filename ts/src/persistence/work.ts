@@ -9,6 +9,8 @@ import {
   TaskEnvelopeSchema,
   type WorkerIdentity,
   WorkerIdentitySchema,
+  type WorkerOutcome,
+  WorkerOutcomeSchema,
   type WorkItem,
   WorkItemSchema,
 } from "../contracts/index.js";
@@ -22,6 +24,7 @@ export class WorkItemConflictError extends Error {}
 export class TaskEnvelopeConflictError extends Error {}
 export class WorkerIdentityConflictError extends Error {}
 export class BoundedWorkEnvelopeConflictError extends Error {}
+export class WorkerOutcomeConflictError extends Error {}
 export class IngestionRecordConflictError extends Error {}
 
 export class GoalStore {
@@ -261,6 +264,72 @@ export class BoundedWorkEnvelopeStore {
   }
 }
 
+export class WorkerOutcomeStore {
+  constructor(private readonly database: Database) {}
+
+  record(outcome: WorkerOutcome): WorkerOutcome {
+    const parsed = WorkerOutcomeSchema.parse(outcome);
+    return this.database.transaction(() => {
+      const existing = this.getByIdempotencyKey(parsed.workspace_id, parsed.idempotency_key);
+      if (existing) {
+        if (jsonEqual(existing, parsed)) {
+          return existing;
+        }
+        throw new WorkerOutcomeConflictError(
+          "worker outcome idempotency key was reused for a different outcome",
+        );
+      }
+
+      this.database.connection
+        .prepare(
+          `INSERT INTO worker_outcomes (
+            id, workspace_id, work_item_id, envelope_id, worker_id, idempotency_key, status,
+            payload_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          parsed.id,
+          parsed.workspace_id,
+          parsed.work_item_id,
+          parsed.envelope_id,
+          parsed.worker_id,
+          parsed.idempotency_key,
+          parsed.status,
+          dumpJson(parsed),
+        );
+      return parsed;
+    });
+  }
+
+  get(outcomeId: string): WorkerOutcome | null {
+    const row = this.database.connection
+      .prepare("SELECT payload_json FROM worker_outcomes WHERE id = ?")
+      .get(outcomeId) as PayloadRow | undefined;
+
+    return row ? WorkerOutcomeSchema.parse(JSON.parse(row.payload_json)) : null;
+  }
+
+  getByIdempotencyKey(workspaceId: string, idempotencyKey: string): WorkerOutcome | null {
+    const row = this.database.connection
+      .prepare(
+        `SELECT payload_json
+         FROM worker_outcomes
+         WHERE workspace_id = ? AND idempotency_key = ?`,
+      )
+      .get(workspaceId, idempotencyKey) as PayloadRow | undefined;
+
+    return row ? WorkerOutcomeSchema.parse(JSON.parse(row.payload_json)) : null;
+  }
+
+  listForWorkItem(workItemId: string): WorkerOutcome[] {
+    const rows = this.database.connection
+      .prepare("SELECT payload_json FROM worker_outcomes WHERE work_item_id = ? ORDER BY id")
+      .all(workItemId) as PayloadRow[];
+
+    return rows.map((row) => WorkerOutcomeSchema.parse(JSON.parse(row.payload_json)));
+  }
+}
+
 export class IngestionRecordStore {
   constructor(private readonly database: Database) {}
 
@@ -323,6 +392,14 @@ export class IngestionRecordStore {
         "SELECT payload_json FROM ingestion_records WHERE target_work_item_id = ? ORDER BY id",
       )
       .all(workItemId) as PayloadRow[];
+
+    return rows.map((row) => IngestionRecordSchema.parse(JSON.parse(row.payload_json)));
+  }
+
+  listForWorkspace(workspaceId: string): IngestionRecord[] {
+    const rows = this.database.connection
+      .prepare("SELECT payload_json FROM ingestion_records WHERE workspace_id = ? ORDER BY id")
+      .all(workspaceId) as PayloadRow[];
 
     return rows.map((row) => IngestionRecordSchema.parse(JSON.parse(row.payload_json)));
   }

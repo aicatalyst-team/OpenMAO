@@ -19,6 +19,7 @@ import {
   RunStore,
   TraceStore,
   WorkerIdentityStore,
+  WorkerOutcomeStore,
   WorkItemStore,
   WorkspaceStore,
 } from "../persistence/index.js";
@@ -70,6 +71,7 @@ function routePattern(pathname: string): {
   runTracesId: string | undefined;
   workEnvelopeId: string | undefined;
   workId: string | undefined;
+  workOutcomeId: string | undefined;
   workspaceEventsId: string | undefined;
 } {
   const approvalMatch = /^\/approvals\/([^/]+)\/(?:approve|reject)$/.exec(pathname);
@@ -78,7 +80,8 @@ function routePattern(pathname: string): {
   const runTracesMatch = /^\/runs\/([^/]+)\/traces$/.exec(pathname);
   const runMatch = /^\/runs\/([^/]+)$/.exec(pathname);
   const workEnvelopeMatch = /^\/work\/([^/]+)\/envelopes$/.exec(pathname);
-  const workMatch = /^\/work\/([^/]+)(?:\/(?:assign|status))?$/.exec(pathname);
+  const workOutcomeMatch = /^\/work\/([^/]+)\/outcomes$/.exec(pathname);
+  const workMatch = /^\/work\/([^/]+)(?:\/(?:assign|status|review))?$/.exec(pathname);
   const workspaceEventsMatch = /^\/workspaces\/([^/]+)\/events$/.exec(pathname);
   const individualMemoryMatch = /^\/memory\/individual\/([^/]+)$/.exec(pathname);
   return {
@@ -90,6 +93,7 @@ function routePattern(pathname: string): {
     runTracesId: runTracesMatch?.[1],
     workEnvelopeId: workEnvelopeMatch?.[1],
     workId: workMatch?.[1],
+    workOutcomeId: workOutcomeMatch?.[1],
     workspaceEventsId: workspaceEventsMatch?.[1],
   };
 }
@@ -449,6 +453,61 @@ export function createServer(options: ServerOptions = {}) {
             reason: typeof body.reason === "string" ? body.reason : null,
             actor: context.actor,
             idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : null,
+          }),
+        );
+        return;
+      }
+      if (request.method === "POST" && approvalRoute.workId && url.pathname.endsWith("/review")) {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const body = await readJsonBody(request);
+        sendJson(
+          response,
+          200,
+          new WorkService(database).reviewWork({
+            work_item_id: approvalRoute.workId,
+            decision: String(body.decision ?? "") as never,
+            notes: typeof body.notes === "string" ? body.notes : null,
+            actor: context.actor,
+            idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : null,
+          }),
+        );
+        return;
+      }
+      if (request.method === "GET" && approvalRoute.workOutcomeId) {
+        sendJson(
+          response,
+          200,
+          new WorkerOutcomeStore(database).listForWorkItem(approvalRoute.workOutcomeId),
+        );
+        return;
+      }
+      if (request.method === "POST" && approvalRoute.workOutcomeId) {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const body = await readJsonBody(request);
+        const output = body.output;
+        sendJson(
+          response,
+          201,
+          new WorkService(database).submitWorkerOutcome({
+            id: typeof body.id === "string" ? body.id : null,
+            workspace_id: context.workspaceId,
+            envelope_id: String(body.envelope_id ?? ""),
+            worker_id: String(body.worker_id ?? ""),
+            status: String(body.status ?? "completed") as never,
+            summary: String(body.summary ?? ""),
+            output:
+              output && typeof output === "object" && !Array.isArray(output)
+                ? (output as Record<string, unknown>)
+                : {},
+            actor: context.actor,
+            idempotency_key:
+              typeof body.idempotency_key === "string"
+                ? body.idempotency_key
+                : `work:${approvalRoute.workOutcomeId}:outcome:${String(body.envelope_id ?? "")}`,
           }),
         );
         return;

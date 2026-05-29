@@ -13,8 +13,10 @@ import {
   type Database,
   EventStore,
   GoalStore,
+  IngestionRecordStore,
   RunStore,
   TaskEnvelopeStore,
+  WorkerIdentityStore,
   WorkItemStore,
   WorkspaceStore,
   WorldModelSnapshotStore,
@@ -30,9 +32,11 @@ export class WorldModelService {
   private readonly capabilities: CapabilityStore;
   private readonly events: EventStore;
   private readonly goals: GoalStore;
+  private readonly ingestions: IngestionRecordStore;
   private readonly runs: RunStore;
   private readonly snapshots: WorldModelSnapshotStore;
   private readonly tasks: TaskEnvelopeStore;
+  private readonly workers: WorkerIdentityStore;
   private readonly workItems: WorkItemStore;
   private readonly workspaces: WorkspaceStore;
 
@@ -41,9 +45,11 @@ export class WorldModelService {
     this.capabilities = new CapabilityStore(database);
     this.events = new EventStore(database);
     this.goals = new GoalStore(database);
+    this.ingestions = new IngestionRecordStore(database);
     this.runs = new RunStore(database);
     this.snapshots = new WorldModelSnapshotStore(database);
     this.tasks = new TaskEnvelopeStore(database);
+    this.workers = new WorkerIdentityStore(database);
     this.workItems = new WorkItemStore(database);
     this.workspaces = new WorkspaceStore(database);
   }
@@ -78,6 +84,25 @@ export class WorldModelService {
           .map((workItem) => workItem.id),
       ].sort();
       const pendingApprovalIds = pendingApprovals.map((approval) => approval.id).sort();
+      const pendingReviews = workItems
+        .filter((workItem) => workItem.status === "review")
+        .map((workItem) => workItem.id)
+        .sort();
+      const externalWorkers = this.workers
+        .listForWorkspace(workspaceId)
+        .filter((worker) => worker.status === "enabled")
+        .map((worker) => worker.id)
+        .sort();
+      const recentIngestions = this.ingestions
+        .listForWorkspace(workspaceId)
+        .filter(
+          (ingestion) =>
+            !runId ||
+            ingestion.target_run_id === runId ||
+            workItems.some((workItem) => workItem.id === ingestion.target_work_item_id),
+        )
+        .slice(-RECENT_EVENT_LIMIT)
+        .map((ingestion) => ingestion.id);
       const capabilityGaps = this.capabilityGaps(workspaceId);
       const recentEvents = workspaceEvents.slice(-RECENT_EVENT_LIMIT).map((event) => event.id);
       const sourceWorkspaceSeq = Math.max(0, ...workspaceEvents.map((event) => event.seq));
@@ -93,6 +118,9 @@ export class WorldModelService {
         active_work: activeWork,
         blockers,
         pending_approvals: pendingApprovalIds,
+        pending_reviews: pendingReviews,
+        external_workers: externalWorkers,
+        recent_ingestions: recentIngestions,
         capability_gaps: capabilityGaps,
         recent_events: recentEvents,
         latest_run_status: run?.status ?? null,

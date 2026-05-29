@@ -5,6 +5,7 @@ import {
   EventStore,
   RunStore,
   WorkerIdentityStore,
+  WorkerOutcomeStore,
   WorkItemStore,
 } from "./persistence/index.js";
 import { createApprovalServiceWithApplications } from "./runtime/approvals.js";
@@ -49,7 +50,11 @@ function positionalArgs(args: string[]): string[] {
     "--capabilities",
     "--worker",
     "--input",
+    "--output",
     "--status",
+    "--summary",
+    "--envelope",
+    "--decision",
   ]);
   const positions: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
@@ -223,6 +228,50 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
         new WorkService(database).setStatus({
           work_item_id: workId,
           status: status as never,
+          actor: "cli_operator",
+        }),
+      );
+      return 0;
+    }
+    if (command === "work" && subcommand === "outcome") {
+      const workId = positions[2];
+      if (!workId) {
+        throw new Error("work id is required");
+      }
+      printJson(
+        write,
+        new WorkService(database).submitWorkerOutcome({
+          id: optionValue(args, "--id"),
+          workspace_id: selectedWorkspace,
+          envelope_id: requireOption(args, "--envelope"),
+          worker_id: requireOption(args, "--worker"),
+          status: (optionValue(args, "--status") ?? "completed") as never,
+          summary: requireOption(args, "--summary"),
+          output: jsonOption(optionValue(args, "--output") ?? optionValue(args, "--input")),
+          idempotency_key: `work:${workId}:outcome:${requireOption(args, "--envelope")}`,
+        }),
+      );
+      return 0;
+    }
+    if (command === "work" && subcommand === "outcomes") {
+      const workId = positions[2];
+      if (!workId) {
+        throw new Error("work id is required");
+      }
+      printJson(write, new WorkerOutcomeStore(database).listForWorkItem(workId));
+      return 0;
+    }
+    if (command === "work" && subcommand === "review") {
+      const workId = positions[2];
+      const decision = positions[3] ?? optionValue(args, "--decision");
+      if (!workId || !decision) {
+        throw new Error("work id and review decision are required");
+      }
+      printJson(
+        write,
+        new WorkService(database).reviewWork({
+          work_item_id: workId,
+          decision: decision as never,
           actor: "cli_operator",
         }),
       );

@@ -11,6 +11,7 @@ import {
   Database,
   EventStore,
   WorkerIdentityStore,
+  WorkerOutcomeStore,
   WorkspaceStore,
 } from "../src/persistence/index.js";
 import { WorkService } from "../src/work/index.js";
@@ -95,6 +96,33 @@ describe("v1 work service", () => {
       input: { topic: "governed update" },
       idempotency_key: "work:governed-update:envelope",
     });
+    const outcome = service.submitWorkerOutcome({
+      id: "outcome_56565656565656565656565656565656",
+      workspace_id: workspace.id,
+      envelope_id: envelope.id,
+      worker_id: worker.id,
+      status: "completed",
+      summary: "Prepared the governed update for review.",
+      output: { ready_for_review: true },
+      idempotency_key: "work:governed-update:outcome",
+    });
+    const replayedOutcome = service.submitWorkerOutcome({
+      id: outcome.id,
+      workspace_id: workspace.id,
+      envelope_id: envelope.id,
+      worker_id: worker.id,
+      status: "completed",
+      summary: outcome.summary,
+      output: outcome.output,
+      idempotency_key: "work:governed-update:outcome",
+    });
+    const reviewed = service.reviewWork({
+      work_item_id: work.id,
+      decision: "accepted",
+      actor: "reviewer:human",
+      notes: "Accepted for v1 substrate test.",
+      idempotency_key: "work:governed-update:review",
+    });
     const events = new EventStore(database).listForWorkspace(workspace.id);
 
     expect(replayed).toEqual(work);
@@ -103,11 +131,17 @@ describe("v1 work service", () => {
     expect(envelope.work_item_id).toBe(work.id);
     expect(envelope.worker_id).toBe(worker.id);
     expect(envelope.objective).toBe(work.objective);
+    expect(outcome.status).toBe("completed");
+    expect(replayedOutcome).toEqual(outcome);
+    expect(reviewed.status).toBe("done");
     expect(new BoundedWorkEnvelopeStore(database).listForWorkItem(work.id)).toEqual([envelope]);
+    expect(new WorkerOutcomeStore(database).listForWorkItem(work.id)).toEqual([outcome]);
     expect(events.map((event) => event.kind)).toEqual([
       "work.created",
       "work.assigned",
       "work.envelope.created",
+      "work.outcome_submitted",
+      "work.reviewed",
     ]);
     expect(events.every((event) => event.idempotency_key)).toBe(true);
   });

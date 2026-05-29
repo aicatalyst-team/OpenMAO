@@ -115,6 +115,27 @@ ON bounded_work_envelopes(workspace_id, id);
 CREATE INDEX IF NOT EXISTS idx_bounded_work_envelopes_work_item
 ON bounded_work_envelopes(workspace_id, work_item_id);
 
+CREATE TABLE IF NOT EXISTS worker_outcomes (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  work_item_id TEXT NOT NULL,
+  envelope_id TEXT NOT NULL,
+  worker_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+  FOREIGN KEY (workspace_id, work_item_id) REFERENCES work_items(workspace_id, id),
+  FOREIGN KEY (workspace_id, envelope_id) REFERENCES bounded_work_envelopes(workspace_id, id),
+  FOREIGN KEY (workspace_id, worker_id) REFERENCES worker_identities(workspace_id, id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_outcomes_workspace_idempotency
+ON worker_outcomes(workspace_id, idempotency_key);
+
+CREATE INDEX IF NOT EXISTS idx_worker_outcomes_work_item
+ON worker_outcomes(workspace_id, work_item_id);
+
 CREATE TABLE IF NOT EXISTS checkpoints (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   workspace_id TEXT NOT NULL,
