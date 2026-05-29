@@ -21,7 +21,7 @@ rm -rf .openmao && npm run cli -- worker demo && npm run cli -- approvals approv
 
 Latest verification on 2026-05-29:
 
-- `make check` passed: TypeScript lint, typecheck, 57 Vitest tests, and public hygiene scan.
+- `make check` passed: TypeScript lint, typecheck, 58 Vitest tests, and public hygiene scan.
 - `rm -rf .openmao && make demo && make demo-approve && rm -rf .openmao` passed.
 - `rm -rf .openmao && npm run cli -- worker demo && npm run cli -- approvals approve approval_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb && rm -rf .openmao` passed.
 
