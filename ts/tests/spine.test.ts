@@ -149,6 +149,49 @@ describe("TypeScript demo spine", () => {
     expect(checkpoint?.run_status).toBe("completed");
   });
 
+  it("isolates default side-effect directories per custom database path", () => {
+    const first = new Database(join(tmpRoot, "first.sqlite3"));
+    const second = new Database(join(tmpRoot, "second.sqlite3"));
+    first.initialize();
+    second.initialize();
+    try {
+      const firstService = new SpineService(first);
+      const secondService = new SpineService(second);
+
+      firstService.startDemo();
+      firstService.resumeDemo();
+      secondService.startDemo();
+      secondService.resumeDemo();
+
+      expect(
+        existsSync(
+          join(
+            tmpRoot,
+            "first.sqlite3.openmao",
+            "collective_memory",
+            `${PROMOTION_CANDIDATE_ID}.md`,
+          ),
+        ),
+      ).toBe(true);
+      expect(
+        existsSync(
+          join(
+            tmpRoot,
+            "second.sqlite3.openmao",
+            "collective_memory",
+            `${PROMOTION_CANDIDATE_ID}.md`,
+          ),
+        ),
+      ).toBe(true);
+      expect(existsSync(join(tmpRoot, "collective_memory", `${PROMOTION_CANDIDATE_ID}.md`))).toBe(
+        false,
+      );
+    } finally {
+      first.close();
+      second.close();
+    }
+  });
+
   it("resumes a running demo checkpoint to the next approval boundary", () => {
     service.initDemoWorkspace();
     new RunStore(database).create(

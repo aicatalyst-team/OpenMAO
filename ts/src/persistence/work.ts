@@ -255,10 +255,15 @@ export class BoundedWorkEnvelopeStore {
     return row ? BoundedWorkEnvelopeSchema.parse(JSON.parse(row.payload_json)) : null;
   }
 
-  listForWorkItem(workItemId: string): BoundedWorkEnvelope[] {
+  listForWorkItem(workspaceId: string, workItemId: string): BoundedWorkEnvelope[] {
     const rows = this.database.connection
-      .prepare("SELECT payload_json FROM bounded_work_envelopes WHERE work_item_id = ? ORDER BY id")
-      .all(workItemId) as PayloadRow[];
+      .prepare(
+        `SELECT payload_json
+         FROM bounded_work_envelopes
+         WHERE workspace_id = ? AND work_item_id = ?
+         ORDER BY id`,
+      )
+      .all(workspaceId, workItemId) as PayloadRow[];
 
     return rows.map((row) => BoundedWorkEnvelopeSchema.parse(JSON.parse(row.payload_json)));
   }
@@ -321,10 +326,15 @@ export class WorkerOutcomeStore {
     return row ? WorkerOutcomeSchema.parse(JSON.parse(row.payload_json)) : null;
   }
 
-  listForWorkItem(workItemId: string): WorkerOutcome[] {
+  listForWorkItem(workspaceId: string, workItemId: string): WorkerOutcome[] {
     const rows = this.database.connection
-      .prepare("SELECT payload_json FROM worker_outcomes WHERE work_item_id = ? ORDER BY id")
-      .all(workItemId) as PayloadRow[];
+      .prepare(
+        `SELECT payload_json
+         FROM worker_outcomes
+         WHERE workspace_id = ? AND work_item_id = ?
+         ORDER BY id`,
+      )
+      .all(workspaceId, workItemId) as PayloadRow[];
 
     return rows.map((row) => WorkerOutcomeSchema.parse(JSON.parse(row.payload_json)));
   }
@@ -386,12 +396,15 @@ export class IngestionRecordStore {
     return row ? IngestionRecordSchema.parse(JSON.parse(row.payload_json)) : null;
   }
 
-  listForWorkItem(workItemId: string): IngestionRecord[] {
+  listForWorkItem(workspaceId: string, workItemId: string): IngestionRecord[] {
     const rows = this.database.connection
       .prepare(
-        "SELECT payload_json FROM ingestion_records WHERE target_work_item_id = ? ORDER BY id",
+        `SELECT payload_json
+         FROM ingestion_records
+         WHERE workspace_id = ? AND target_work_item_id = ?
+         ORDER BY id`,
       )
-      .all(workItemId) as PayloadRow[];
+      .all(workspaceId, workItemId) as PayloadRow[];
 
     return rows.map((row) => IngestionRecordSchema.parse(JSON.parse(row.payload_json)));
   }

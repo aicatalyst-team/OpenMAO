@@ -10,6 +10,7 @@ import {
   BoundedWorkEnvelopeStore,
   Database,
   EventStore,
+  TaskEnvelopeStore,
   WorkerIdentityStore,
   WorkerOutcomeStore,
   WorkspaceStore,
@@ -134,8 +135,12 @@ describe("v1 work service", () => {
     expect(outcome.status).toBe("completed");
     expect(replayedOutcome).toEqual(outcome);
     expect(reviewed.status).toBe("done");
-    expect(new BoundedWorkEnvelopeStore(database).listForWorkItem(work.id)).toEqual([envelope]);
-    expect(new WorkerOutcomeStore(database).listForWorkItem(work.id)).toEqual([outcome]);
+    expect(new BoundedWorkEnvelopeStore(database).listForWorkItem(workspace.id, work.id)).toEqual([
+      envelope,
+    ]);
+    expect(new WorkerOutcomeStore(database).listForWorkItem(workspace.id, work.id)).toEqual([
+      outcome,
+    ]);
     expect(events.map((event) => event.kind)).toEqual([
       "work.created",
       "work.assigned",
@@ -144,5 +149,86 @@ describe("v1 work service", () => {
       "work.reviewed",
     ]);
     expect(events.every((event) => event.idempotency_key)).toBe(true);
+  });
+
+  it("creates run-bound bounded envelopes with gateway task context", async () => {
+    const workspace = await seedWorkspace();
+    const fixture = await loadFixture();
+    const worker = new WorkerIdentityStore(database).save(
+      WorkerIdentitySchema.parse(fixture.worker_identity),
+    );
+    const service = new WorkService(database);
+    const work = service.createWork({
+      id: "work_23232323232323232323232323232323",
+      workspace_id: workspace.id,
+      title: "Run-bound governed update",
+      objective: "Expose public task context for a governed worker capability call.",
+      owner: "operator:local",
+      actor: "operator:local",
+      idempotency_key: "work:run-bound:create",
+    });
+    const run = service.ensureExternalRun({
+      id: "run_24242424242424242424242424242424",
+      workspace_id: workspace.id,
+      active_node: "external_worker_started",
+      actor: "operator:local",
+      idempotency_key: "work:run-bound:run",
+    });
+
+    const envelope = service.createBoundedEnvelope({
+      id: "envelope_25252525252525252525252525252525",
+      workspace_id: workspace.id,
+      work_item_id: work.id,
+      run_id: run.id,
+      worker_id: worker.id,
+      issued_by: {
+        actor_type: "operator",
+        actor_id: "operator:local",
+        display_name: null,
+      },
+      allowed_capabilities: ["mock.research_lookup"],
+      idempotency_key: "work:run-bound:envelope",
+    });
+    const task = new TaskEnvelopeStore(database).get(envelope.task_envelope_id ?? "");
+
+    expect(envelope.run_id).toBe(run.id);
+    expect(envelope.task_envelope_id).toBe("task_25252525252525252525252525252525");
+    expect(task?.run_id).toBe(run.id);
+    expect(task?.to_agent).toBe(worker.id);
+    expect(task?.allowed_capabilities).toEqual(["mock.research_lookup"]);
+  });
+
+  it("rejects bounded envelopes that exceed worker capability grants", async () => {
+    const workspace = await seedWorkspace();
+    const fixture = await loadFixture();
+    const worker = new WorkerIdentityStore(database).save(
+      WorkerIdentitySchema.parse(fixture.worker_identity),
+    );
+    const service = new WorkService(database);
+    const work = service.createWork({
+      id: "work_26262626262626262626262626262626",
+      workspace_id: workspace.id,
+      title: "Over-granted bounded work",
+      objective: "Prove the envelope does not advertise ungranted authority.",
+      owner: "operator:local",
+      actor: "operator:local",
+      idempotency_key: "work:over-granted:create",
+    });
+
+    expect(() =>
+      service.createBoundedEnvelope({
+        id: "envelope_27272727272727272727272727272727",
+        workspace_id: workspace.id,
+        work_item_id: work.id,
+        worker_id: worker.id,
+        issued_by: {
+          actor_type: "operator",
+          actor_id: "operator:local",
+          display_name: null,
+        },
+        allowed_capabilities: ["mock.side_effect.record"],
+        idempotency_key: "work:over-granted:envelope",
+      }),
+    ).toThrow("exceed worker grants");
   });
 });

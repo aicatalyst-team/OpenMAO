@@ -3,6 +3,7 @@ import { ApprovalService } from "./governance/index.js";
 import { IngestionService } from "./ingestion/index.js";
 import {
   BoundedWorkEnvelopeStore,
+  type Database,
   EventStore,
   IngestionRecordStore,
   RunStore,
@@ -11,7 +12,10 @@ import {
   WorkItemStore,
 } from "./persistence/index.js";
 import { createApprovalServiceWithApplications } from "./runtime/approvals.js";
-import { createLocalCapabilityRegistry } from "./runtime/capabilities.js";
+import {
+  createLocalCapabilityRegistry,
+  materializeRejectedCapabilityApproval,
+} from "./runtime/capabilities.js";
 import { openLocalDatabase } from "./runtime/local.js";
 import { PROMOTION_APPROVAL_ID, RUN_ID, SpineService, WORKSPACE_ID } from "./spine/index.js";
 import { WorkService } from "./work/index.js";
@@ -118,6 +122,13 @@ function jsonOption(value: string | null): Record<string, unknown> {
 function requireDefaultWorkspace(workspaceId: string): void {
   if (workspaceId !== WORKSPACE_ID) {
     throw new Error(`demo run does not belong to workspace: ${workspaceId}`);
+  }
+}
+
+function requireWorkItemInWorkspace(database: Database, workspaceId: string, workId: string): void {
+  const work = new WorkItemStore(database).get(workId);
+  if (!work || work.workspace_id !== workspaceId) {
+    throw new Error(`work item not found in workspace: ${workId}`);
   }
 }
 
@@ -285,7 +296,8 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       if (!workId) {
         throw new Error("work id is required");
       }
-      printJson(write, new WorkerOutcomeStore(database).listForWorkItem(workId));
+      requireWorkItemInWorkspace(database, selectedWorkspace, workId);
+      printJson(write, new WorkerOutcomeStore(database).listForWorkItem(selectedWorkspace, workId));
       return 0;
     }
     if (command === "work" && subcommand === "review") {
@@ -317,6 +329,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
           work_item_id: workId,
           worker_id: requireOption(args, "--worker"),
           issued_by: { actor_type: "operator", actor_id: "cli_operator", display_name: null },
+          run_id: optionValue(args, "--run"),
           allowed_capabilities: commaList(optionValue(args, "--capabilities")),
           input: jsonOption(optionValue(args, "--input")),
         }),
@@ -328,7 +341,11 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       if (!workId) {
         throw new Error("work id is required");
       }
-      printJson(write, new BoundedWorkEnvelopeStore(database).listForWorkItem(workId));
+      requireWorkItemInWorkspace(database, selectedWorkspace, workId);
+      printJson(
+        write,
+        new BoundedWorkEnvelopeStore(database).listForWorkItem(selectedWorkspace, workId),
+      );
       return 0;
     }
     if (command === "ingest" && (subcommand === "list" || subcommand === "")) {
@@ -336,15 +353,20 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       return 0;
     }
     if (command === "ingest" && subcommand === "record") {
+      const sourceId = optionValue(args, "--source-id");
+      const sourceUrl = optionValue(args, "--source-url");
+      if (!sourceId && !sourceUrl) {
+        throw new Error("--source-id or --source-url is required");
+      }
       printJson(
         write,
         new IngestionService(database).record({
           id: optionValue(args, "--id"),
           workspace_id: selectedWorkspace,
           source: {
-            provider: optionValue(args, "--source-provider") ?? "openmao",
-            external_id: optionValue(args, "--source-id"),
-            external_url: optionValue(args, "--source-url"),
+            provider: requireOption(args, "--source-provider"),
+            external_id: sourceId,
+            external_url: sourceUrl,
           },
           actor: {
             actor_type: (optionValue(args, "--actor-type") ?? "worker") as never,
@@ -366,6 +388,9 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
         throw new Error("approval id is required");
       }
       const approval = new ApprovalService(database).approvals.get(approvalId);
+      if (approval && approval.workspace_id !== selectedWorkspace) {
+        throw new Error(`approval does not belong to workspace: ${approvalId}`);
+      }
       if (approval?.payload.target_type === "capability_call" && approval.run_id === RUN_ID) {
         printJson(
           write,
@@ -405,11 +430,19 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       if (!approvalId) {
         throw new Error("approval id is required");
       }
+      const approvalService = new ApprovalService(database);
+      const approval = approvalService.approvals.get(approvalId);
+      if (approval && approval.workspace_id !== selectedWorkspace) {
+        throw new Error(`approval does not belong to workspace: ${approvalId}`);
+      }
+      const rejected = approvalService.reject(approvalId, {
+        workspace_id: selectedWorkspace,
+      });
       printJson(
         write,
-        new ApprovalService(database).reject(approvalId, {
-          workspace_id: selectedWorkspace,
-        }),
+        rejected.payload.target_type === "capability_call"
+          ? materializeRejectedCapabilityApproval(database, rejected)
+          : rejected,
       );
       return 0;
     }

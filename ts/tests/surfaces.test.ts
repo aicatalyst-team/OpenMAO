@@ -69,7 +69,7 @@ describe("TypeScript operator surfaces", () => {
         ],
         { dbPath },
       ),
-    ).rejects.toThrow("demo run does not belong to workspace");
+    ).rejects.toThrow("approval does not belong to workspace");
     expect(await runCli(["approvals", "approve", PROMOTION_APPROVAL_ID], { dbPath })).toBe(0);
     expect(await runCli(["world"], { dbPath, write: worldOutput.write })).toBe(0);
     expect(JSON.parse(worldOutput.lines[0] ?? "{}").latest_run_status).toBe("completed");
@@ -236,6 +236,8 @@ describe("TypeScript operator surfaces", () => {
           "trace",
           "--source-provider",
           "openmao",
+          "--source-id",
+          "reference-worker",
           "--actor-id",
           "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           "--work",
@@ -278,6 +280,18 @@ describe("TypeScript operator surfaces", () => {
     expect(JSON.parse(approvalsOutput.lines[0] ?? "[]")[0].id).toBe(
       "approval_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
     );
+    await expect(
+      runCli(
+        [
+          "approvals",
+          "approve",
+          REFERENCE_CAPABILITY_APPROVAL_ID,
+          "--workspace",
+          "ws_22222222222222222222222222222222",
+        ],
+        { dbPath },
+      ),
+    ).rejects.toThrow("approval does not belong to workspace");
     expect(
       await runCli(["worker", "demo-approve"], {
         dbPath,
@@ -469,11 +483,16 @@ describe("TypeScript operator surfaces", () => {
         headers: jsonHeaders,
         body: JSON.stringify({
           id: "envelope_cccccccccccccccccccccccccccccccc",
+          run_id: RUN_ID,
           worker_id: worker.id,
           allowed_capabilities: ["mock.research_lookup"],
           input: { topic: "governed update" },
         }),
-      }).then((response) => response.json())) as { worker_id: string; work_item_id: string };
+      }).then((response) => response.json())) as {
+        task_envelope_id: string | null;
+        worker_id: string;
+        work_item_id: string;
+      };
       const outcome = (await fetch(`${baseUrl}/work/${work.id}/outcomes`, {
         method: "POST",
         headers: jsonHeaders,
@@ -510,9 +529,38 @@ describe("TypeScript operator surfaces", () => {
       const ingestionList = (await fetch(`${baseUrl}/ingestion`, {
         headers: operatorHeaders,
       }).then((response) => response.json())) as unknown[];
+      const invalidIngestion = await fetch(`${baseUrl}/ingestion`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          kind: "trace",
+          source: { provider: "openmao", external_id: "reference-worker" },
+          actor: { actor_type: "worker", actor_id: worker.id },
+        }),
+      });
       const envelopes = (await fetch(`${baseUrl}/work/${work.id}/envelopes`, {
         headers: operatorHeaders,
       }).then((response) => response.json())) as unknown[];
+      const database = new Database(dbPath);
+      database.initialize();
+      try {
+        new WorkspaceStore(database).save(
+          WorkspaceSchema.parse({
+            id: "ws_22222222222222222222222222222222",
+            name: "Second Workspace",
+            created_at: "2026-05-27T15:20:00Z",
+            default_org_id: null,
+          }),
+        );
+      } finally {
+        database.close();
+      }
+      const wrongWorkspaceEnvelopes = await fetch(`${baseUrl}/work/${work.id}/envelopes`, {
+        headers: {
+          ...operatorHeaders,
+          "x-openmao-workspace": "ws_22222222222222222222222222222222",
+        },
+      });
       const events = (await fetch(`${baseUrl}/events`, { headers: operatorHeaders }).then(
         (response) => response.json(),
       )) as Array<{ kind: string }>;
@@ -523,13 +571,17 @@ describe("TypeScript operator surfaces", () => {
       expect(assigned.status).toBe("in_progress");
       expect(envelope.worker_id).toBe(worker.id);
       expect(envelope.work_item_id).toBe(work.id);
+      expect(envelope.task_envelope_id).toBe("task_cccccccccccccccccccccccccccccccc");
       expect(outcome.status).toBe("completed");
       expect(outcome.work_item_id).toBe(work.id);
       expect(outcomes).toHaveLength(1);
       expect(reviewed.status).toBe("done");
       expect(ingestion.kind).toBe("trace");
       expect(ingestionList).toHaveLength(1);
+      expect(invalidIngestion.status).toBe(400);
+      expect(await invalidIngestion.json()).toEqual({ error: "missing_idempotency_key" });
       expect(envelopes).toHaveLength(1);
+      expect(wrongWorkspaceEnvelopes.status).toBe(404);
       expect(events.map((event) => event.kind)).toEqual(
         expect.arrayContaining([
           "worker.registered",
@@ -601,6 +653,43 @@ describe("TypeScript operator surfaces", () => {
       expect(consoleHtml).toContain("/workers/reference-demo");
       expect(consoleHtml).toContain('data-view="capabilityCalls"');
       expect(consoleHtml).toContain('data-view="capabilityResults"');
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
+
+  it("materializes rejected reference-worker capability results over HTTP", async () => {
+    const server = createServer({ dbPath, operatorToken });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as AddressInfo;
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    try {
+      const started = (await fetch(`${baseUrl}/workers/reference-demo`, {
+        method: "POST",
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as {
+        capability_approval_id: string;
+        status: string;
+      };
+      const rejected = (await fetch(
+        `${baseUrl}/approvals/${REFERENCE_CAPABILITY_APPROVAL_ID}/reject`,
+        {
+          method: "POST",
+          headers: operatorHeaders,
+        },
+      ).then((response) => response.json())) as {
+        result?: { status: string };
+      };
+      const capabilityResults = (await fetch(`${baseUrl}/capability-results`, {
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as Array<{ call_id: string; status: string }>;
+
+      expect(started.status).toBe("suspended_approval");
+      expect(started.capability_approval_id).toBe(REFERENCE_CAPABILITY_APPROVAL_ID);
+      expect(rejected.result?.status).toBe("blocked");
+      expect(capabilityResults.at(0)?.status).toBe("blocked");
     } finally {
       await new Promise<void>((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));

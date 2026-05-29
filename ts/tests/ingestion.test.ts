@@ -4,13 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { WorkItemSchema, WorkspaceSchema } from "../src/contracts/index.js";
+import { WorkerIdentitySchema, WorkItemSchema, WorkspaceSchema } from "../src/contracts/index.js";
 import { IngestionService } from "../src/ingestion/index.js";
 import {
   Database,
   EventStore,
   IngestionRecordConflictError,
   IngestionRecordStore,
+  WorkerIdentityStore,
   WorkItemStore,
   WorkspaceStore,
 } from "../src/persistence/index.js";
@@ -32,6 +33,14 @@ beforeEach(async () => {
   const fixture = await loadFixture();
   new WorkspaceStore(database).save(WorkspaceSchema.parse(fixture.workspace));
   new WorkItemStore(database).save(WorkItemSchema.parse(fixture.work_item));
+  new WorkerIdentityStore(database).save(
+    WorkerIdentitySchema.parse({
+      id: "worker_12121212121212121212121212121212",
+      workspace_id: (fixture.workspace as { id: string }).id,
+      name: "Reference worker",
+      runtime: "openmao.test.worker",
+    }),
+  );
 });
 
 afterEach(() => {
@@ -81,5 +90,55 @@ describe("v1 ingestion service", () => {
         payload: { changed: true },
       }),
     ).toThrow(IngestionRecordConflictError);
+  });
+
+  it("rejects missing identity and idempotency", async () => {
+    const fixture = await loadFixture();
+    const workspaceId = (fixture.workspace as { id: string }).id;
+    const workItemId = (fixture.work_item as { id: string }).id;
+    const service = new IngestionService(database);
+
+    expect(() =>
+      service.record({
+        workspace_id: workspaceId,
+        source: { provider: "openmao", external_id: "reference-worker", external_url: null },
+        actor: {
+          actor_type: "worker",
+          actor_id: "worker_12121212121212121212121212121212",
+          display_name: null,
+        },
+        kind: "trace",
+        target_work_item_id: workItemId,
+        idempotency_key: "",
+      }),
+    ).toThrow("idempotency");
+    expect(() =>
+      service.record({
+        workspace_id: workspaceId,
+        source: { provider: "openmao", external_id: null, external_url: null },
+        actor: {
+          actor_type: "worker",
+          actor_id: "worker_12121212121212121212121212121212",
+          display_name: null,
+        },
+        kind: "trace",
+        target_work_item_id: workItemId,
+        idempotency_key: "reference-worker:trace:missing-source",
+      }),
+    ).toThrow("source external identity");
+    expect(() =>
+      service.record({
+        workspace_id: workspaceId,
+        source: { provider: "openmao", external_id: "reference-worker", external_url: null },
+        actor: {
+          actor_type: "worker",
+          actor_id: "worker_missingmissingmissingmissingmiss",
+          display_name: null,
+        },
+        kind: "trace",
+        target_work_item_id: workItemId,
+        idempotency_key: "reference-worker:trace:missing-worker",
+      }),
+    ).toThrow("worker actor");
   });
 });

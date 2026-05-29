@@ -22,6 +22,7 @@ import { WorkService } from "../work/index.js";
 type ClientContext = {
   workspace_id: string;
   actor: string;
+  actor_type?: ExternalActorRef["actor_type"];
 };
 
 type RegisterWorkerInput = {
@@ -51,6 +52,7 @@ type IssueEnvelopeInput = {
   work_item_id: string;
   worker_id: string;
   run_id?: string | null;
+  task_envelope_id?: string | null;
   issued_by?: ExternalActorRef | null;
   objective?: string | null;
   context_refs?: string[];
@@ -144,7 +146,10 @@ export class OpenMaoLocalClient {
   }
 
   envelopes(workItemId: string): BoundedWorkEnvelope[] {
-    return new BoundedWorkEnvelopeStore(this.database).listForWorkItem(workItemId);
+    return new BoundedWorkEnvelopeStore(this.database).listForWorkItem(
+      this.context.workspace_id,
+      workItemId,
+    );
   }
 
   submitOutcome(input: SubmitOutcomeInput): WorkerOutcome {
@@ -156,7 +161,10 @@ export class OpenMaoLocalClient {
   }
 
   outcomes(workItemId: string): WorkerOutcome[] {
-    return new WorkerOutcomeStore(this.database).listForWorkItem(workItemId);
+    return new WorkerOutcomeStore(this.database).listForWorkItem(
+      this.context.workspace_id,
+      workItemId,
+    );
   }
 
   reviewWork(input: {
@@ -172,9 +180,13 @@ export class OpenMaoLocalClient {
     return this.ingestions.record({
       ...input,
       workspace_id: this.context.workspace_id,
-      source: input.source ?? { provider: "openmao", external_id: null, external_url: null },
+      source: input.source ?? {
+        provider: "openmao-sdk",
+        external_id: this.context.actor,
+        external_url: null,
+      },
       actor: input.actor ?? {
-        actor_type: "worker",
+        actor_type: this.context.actor_type ?? "operator",
         actor_id: this.context.actor,
         display_name: null,
       },

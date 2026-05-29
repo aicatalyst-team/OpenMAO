@@ -26,6 +26,7 @@ import {
 import { ApprovalService, GovernanceService } from "../src/governance/index.js";
 import { OrgRegistry } from "../src/org/index.js";
 import {
+  CapabilityCallStore,
   CapabilityStore,
   Database,
   EventStore,
@@ -426,6 +427,33 @@ describe("TypeScript governance and capabilities", () => {
       "policy.decision",
       "capability.completed",
     ]);
+  });
+
+  it("rejects unknown or secret-shaped capability payload material before persistence", async () => {
+    const run = await seedRunningRun();
+    await seedCapability("enabled");
+    const registry = await orgRegistry();
+    const provider = new MockProvider();
+    const service = new CapabilityRegistryService(
+      database,
+      new GovernanceService(database, registry),
+      [provider],
+    );
+    const extraFieldCall = await capabilityCall(run, {
+      id: "capcall_12121212121212121212121212121212",
+      input: { query: "onboarding brief", secret: "sk-testsecret123456" },
+      idempotency_key: `${run.id}:secret_input`,
+    });
+    const auditSecretCall = await capabilityCall(run, {
+      id: "capcall_13131313131313131313131313131313",
+      audit_payload: { token: "Bearer testsecret123456" },
+      idempotency_key: `${run.id}:secret_audit`,
+    });
+
+    expect(() => service.invoke(extraFieldCall)).toThrow(/unknown field|sensitive key/);
+    expect(() => service.invoke(auditSecretCall)).toThrow("secret-shaped material");
+    expect(provider.executedCallIds).toEqual([]);
+    expect(new CapabilityCallStore(database).listForWorkspace(run.workspace_id)).toEqual([]);
   });
 
   it("does not re-execute a provider when a node-effect guard exists without a result", async () => {

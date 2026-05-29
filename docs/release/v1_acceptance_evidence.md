@@ -21,7 +21,7 @@ rm -rf .openmao && npm run cli -- worker demo && npm run cli -- approvals approv
 
 Latest verification on 2026-05-29:
 
-- `make check` passed: TypeScript lint, typecheck, 58 Vitest tests, and public hygiene scan.
+- `make check` passed: TypeScript lint, typecheck, 64 Vitest tests, and public hygiene scan.
 - `rm -rf .openmao && make demo && make demo-approve && rm -rf .openmao` passed.
 - `rm -rf .openmao && npm run cli -- worker demo && npm run cli -- approvals approve approval_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb && rm -rf .openmao` passed.
 
@@ -38,10 +38,13 @@ The default v0 demo and the v1 worker demo require no live external credentials 
 | Approval | High-risk worker capability calls suspend before provider execution. | `ts/tests/governance.test.ts`, `ts/tests/reference_worker.test.ts` |
 | Resume | Approval resumes from persisted capability-call state after process restart. | `ts/tests/governance.test.ts`, `ts/tests/surfaces.test.ts` |
 | Idempotency | Approved provider execution happens at most once. | `ts/tests/governance.test.ts`, `ts/tests/reference_worker.test.ts` |
-| Rejection | Rejected capability approvals produce an explicit blocked result. | `ts/src/capabilities/registry.ts`, `ts/tests/governance.test.ts` |
-| Credential boundary | Workers receive credential handles, not raw credential values. | `ts/tests/contracts.test.ts`, `ts/tests/governance.test.ts`, `ts/src/capabilities/providers.ts` |
-| Grants | Worker identity must be enabled and granted the capability. | `ts/tests/governance.test.ts`, `ts/src/capabilities/registry.ts` |
-| Ingestion | External worker ingestion is workspace-scoped and idempotent. | `ts/tests/ingestion.test.ts`, `ts/tests/reference_worker.test.ts` |
+| Rejection | Rejected capability approvals produce an explicit blocked result immediately. | `ts/src/capabilities/registry.ts`, `ts/src/runtime/capabilities.ts`, `ts/tests/governance.test.ts`, `ts/tests/surfaces.test.ts` |
+| Credential boundary | Workers receive credential handles, not raw credential values, and secret-shaped capability material is rejected before persistence. | `ts/tests/contracts.test.ts`, `ts/tests/governance.test.ts`, `ts/src/capabilities/providers.ts`, `ts/src/capabilities/registry.ts` |
+| Grants | Worker identity must be enabled, granted the capability, and bounded envelopes cannot advertise ungranted capabilities. | `ts/tests/governance.test.ts`, `ts/tests/work_service.test.ts`, `ts/src/capabilities/registry.ts`, `ts/src/work/service.ts` |
+| Ingestion | External worker ingestion is workspace-scoped, explicitly identified, idempotent, and projected through services. | `ts/tests/ingestion.test.ts`, `ts/tests/reference_worker.test.ts`, `ts/tests/surfaces.test.ts` |
+| Workspace isolation | Workspace-scoped child reads prevent cross-workspace envelope, outcome, and ingestion leakage. | `ts/src/persistence/work.ts`, `ts/src/api/server.ts`, `ts/src/cli.ts`, `ts/tests/surfaces.test.ts` |
+| Side-effect isolation | Custom database paths do not share default artifact or collective-memory output directories. | `ts/src/spine/service.ts`, `ts/tests/spine.test.ts` |
+| Gateway context | Run-bound bounded work envelopes expose a service-created task-envelope id for gateway calls. | `ts/src/contracts/models.ts`, `ts/src/work/service.ts`, `ts/tests/work_service.test.ts`, `ts/tests/surfaces.test.ts` |
 | World model | External workers and ingestions project into a rebuildable world model. | `ts/tests/reference_worker.test.ts`, `ts/tests/memory_world.test.ts` |
 | SDK | The local SDK preserves workspace, actor, idempotency, work, outcome, and ingestion identity. | `ts/tests/sdk.test.ts`, `ts/src/sdk/local-client.ts` |
 | API | HTTP surfaces expose work, workers, ingestion, capability calls, capability results, approvals, and world model state through services. | `ts/tests/surfaces.test.ts`, `ts/src/api/server.ts` |
@@ -65,6 +68,7 @@ The v1 local demo proves the enforced worker path:
 | v0 compatibility smoke | Passing |
 | v1 worker gateway smoke | Passing |
 | Public hygiene | Passing |
+| Review-blocker fixes | Passing implementation checks; pending independent re-review |
 | QA review | Pending |
 | Security review | Pending |
 | Architecture review | Pending |

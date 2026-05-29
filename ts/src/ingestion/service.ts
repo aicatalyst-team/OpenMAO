@@ -12,6 +12,7 @@ import {
   EventStore,
   IngestionRecordStore,
   RunStore,
+  WorkerIdentityStore,
   WorkItemStore,
   WorkspaceStore,
 } from "../persistence/index.js";
@@ -37,6 +38,7 @@ export class IngestionService {
   private readonly events: EventStore;
   private readonly ingestions: IngestionRecordStore;
   private readonly runs: RunStore;
+  private readonly workers: WorkerIdentityStore;
   private readonly workItems: WorkItemStore;
   private readonly workspaces: WorkspaceStore;
 
@@ -44,6 +46,7 @@ export class IngestionService {
     this.events = new EventStore(database);
     this.ingestions = new IngestionRecordStore(database);
     this.runs = new RunStore(database);
+    this.workers = new WorkerIdentityStore(database);
     this.workItems = new WorkItemStore(database);
     this.workspaces = new WorkspaceStore(database);
   }
@@ -51,6 +54,7 @@ export class IngestionService {
   record(input: RecordIngestionInput): IngestionRecord {
     return this.database.transaction(() => {
       this.requireWorkspace(input.workspace_id);
+      this.requireIdentity(input);
       this.requireTargets(input);
       const record = IngestionRecordSchema.parse({
         id: input.id ?? newId("ingest"),
@@ -90,6 +94,29 @@ export class IngestionService {
   private requireWorkspace(workspaceId: string): void {
     if (!this.workspaces.get(workspaceId)) {
       throw new Error(`workspace not found: ${workspaceId}`);
+    }
+  }
+
+  private requireIdentity(input: RecordIngestionInput): void {
+    if (!input.idempotency_key.trim()) {
+      throw new Error("ingestion idempotency key is required");
+    }
+    if (!input.source.provider.trim()) {
+      throw new Error("ingestion source provider is required");
+    }
+    const sourceId = input.source.external_id?.trim() ?? "";
+    const sourceUrl = input.source.external_url?.trim() ?? "";
+    if (!sourceId && !sourceUrl) {
+      throw new Error("ingestion source external identity is required");
+    }
+    if (!input.actor.actor_id.trim()) {
+      throw new Error("ingestion actor identity is required");
+    }
+    if (input.actor.actor_type === "worker") {
+      const worker = this.workers.get(input.actor.actor_id);
+      if (!worker || worker.workspace_id !== input.workspace_id) {
+        throw new Error(`ingestion worker actor not found in workspace: ${input.actor.actor_id}`);
+      }
     }
   }
 

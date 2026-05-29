@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import {
   type CapabilityInvocation,
@@ -971,10 +971,7 @@ export class SpineService {
   }
 
   private artifactDir(): string {
-    return (
-      this.options.artifact_dir ??
-      join(this.database.path === ":memory:" ? "." : dirname(this.database.path), "artifacts")
-    );
+    return this.options.artifact_dir ?? this.sideEffectDir("artifacts");
   }
 
   private artifactPath(): string {
@@ -982,13 +979,18 @@ export class SpineService {
   }
 
   private collectiveMemoryDir(): string {
-    return (
-      this.options.collective_memory_dir ??
-      join(
-        this.database.path === ":memory:" ? "." : dirname(this.database.path),
-        "collective_memory",
-      )
-    );
+    return this.options.collective_memory_dir ?? this.sideEffectDir("collective_memory");
+  }
+
+  private sideEffectDir(name: string): string {
+    if (this.database.path === ":memory:") {
+      return join(".", ".openmao-memory", name);
+    }
+    const parent = dirname(this.database.path);
+    if (basename(parent) === ".openmao" && basename(this.database.path) === "openmao.sqlite3") {
+      return join(parent, name);
+    }
+    return join(parent, `${basename(this.database.path)}.openmao`, name);
   }
 }
 

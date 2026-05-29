@@ -1,9 +1,15 @@
+import { createHash } from "node:crypto";
+
 import {
   type BoundedWorkEnvelope,
   BoundedWorkEnvelopeSchema,
   EventPayloadSchema,
   type ExternalActorRef,
   newId,
+  type Run,
+  RunSchema,
+  type TaskEnvelope,
+  TaskEnvelopeSchema,
   utcNow,
   type WorkerIdentity,
   WorkerIdentitySchema,
@@ -16,6 +22,8 @@ import type { Database } from "../persistence/database.js";
 import {
   BoundedWorkEnvelopeStore,
   EventStore,
+  RunStore,
+  TaskEnvelopeStore,
   WorkerIdentityStore,
   WorkerOutcomeStore,
   WorkItemStore,
@@ -91,6 +99,7 @@ type CreateBoundedEnvelopeInput = {
   workspace_id: string;
   work_item_id: string;
   run_id?: string | null;
+  task_envelope_id?: string | null;
   worker_id: string;
   issued_by: ExternalActorRef;
   objective?: string | null;
@@ -99,6 +108,24 @@ type CreateBoundedEnvelopeInput = {
   approval_gates?: string[];
   input?: Record<string, unknown>;
   expires_at?: string | null;
+  idempotency_key?: string | null;
+};
+
+type EnsureExternalRunInput = {
+  id?: string | null;
+  workspace_id: string;
+  active_node: string;
+  actor: string;
+  created_at?: string | null;
+  idempotency_key?: string | null;
+};
+
+type CompleteExternalRunInput = {
+  run_id: string;
+  active_node: string;
+  actor: string;
+  refs?: string[];
+  data?: Record<string, unknown>;
   idempotency_key?: string | null;
 };
 
@@ -112,6 +139,8 @@ export class WorkService {
   private readonly outcomes: WorkerOutcomeStore;
   private readonly boundedEnvelopes: BoundedWorkEnvelopeStore;
   private readonly events: EventStore;
+  private readonly runs: RunStore;
+  private readonly tasks: TaskEnvelopeStore;
 
   constructor(private readonly database: Database) {
     this.workItems = new WorkItemStore(database);
@@ -119,6 +148,8 @@ export class WorkService {
     this.outcomes = new WorkerOutcomeStore(database);
     this.boundedEnvelopes = new BoundedWorkEnvelopeStore(database);
     this.events = new EventStore(database);
+    this.runs = new RunStore(database);
+    this.tasks = new TaskEnvelopeStore(database);
   }
 
   createWork(input: CreateWorkInput): WorkItem {
@@ -315,6 +346,10 @@ export class WorkService {
     });
   }
 
+  getRun(runId: string): Run | null {
+    return this.runs.get(runId);
+  }
+
   createBoundedEnvelope(input: CreateBoundedEnvelopeInput): BoundedWorkEnvelope {
     return this.database.transaction(() => {
       const workItem = this.requireWorkItem(input.work_item_id);
@@ -325,17 +360,50 @@ export class WorkService {
       if (workItem.workspace_id !== input.workspace_id) {
         throw new Error(`work item not found in workspace: ${input.work_item_id}`);
       }
+      const allowedCapabilities = input.allowed_capabilities ?? worker.allowed_capabilities;
+      const ungranted = allowedCapabilities.filter(
+        (capability) => !worker.allowed_capabilities.includes(capability),
+      );
+      if (ungranted.length > 0) {
+        throw new Error(
+          `bounded envelope capabilities exceed worker grants: ${ungranted.join(", ")}`,
+        );
+      }
+      if (input.run_id) {
+        const run = this.runs.get(input.run_id);
+        if (!run || run.workspace_id !== input.workspace_id) {
+          throw new Error(`run not found in workspace: ${input.run_id}`);
+        }
+      }
+      const envelopeId = input.id ?? newId("envelope");
+      const taskEnvelopeId = input.run_id
+        ? (input.task_envelope_id ?? this.taskEnvelopeIdForEnvelope(envelopeId))
+        : null;
+      const taskEnvelope = input.run_id
+        ? this.ensureTaskEnvelope({
+            id: taskEnvelopeId ?? undefined,
+            workspace_id: input.workspace_id,
+            run_id: input.run_id,
+            work_item_id: workItem.id,
+            worker_id: worker.id,
+            objective: input.objective ?? workItem.objective,
+            allowed_capabilities: allowedCapabilities,
+            approval_gates: input.approval_gates ?? workItem.approval_gates,
+            actor: actorString(input.issued_by),
+          })
+        : null;
 
       const envelope = BoundedWorkEnvelopeSchema.parse({
-        id: input.id ?? newId("envelope"),
+        id: envelopeId,
         workspace_id: input.workspace_id,
         work_item_id: workItem.id,
         run_id: input.run_id ?? null,
+        task_envelope_id: taskEnvelope?.id ?? null,
         worker_id: worker.id,
         issued_by: input.issued_by,
         objective: input.objective ?? workItem.objective,
         context_refs: input.context_refs ?? [],
-        allowed_capabilities: input.allowed_capabilities ?? worker.allowed_capabilities,
+        allowed_capabilities: allowedCapabilities,
         approval_gates: input.approval_gates ?? workItem.approval_gates,
         input: input.input ?? {},
         created_at: utcNow(),
@@ -360,6 +428,117 @@ export class WorkService {
       });
       return saved;
     });
+  }
+
+  ensureExternalRun(input: EnsureExternalRunInput): Run {
+    return this.database.transaction(() => {
+      const existing = this.runs.get(input.id ?? "");
+      if (existing) {
+        if (existing.workspace_id !== input.workspace_id) {
+          throw new Error(`run not found in workspace: ${existing.id}`);
+        }
+        if (existing.status === "queued") {
+          return this.runs.setStatus(existing.id, "running", {
+            active_node: input.active_node,
+          });
+        }
+        return existing;
+      }
+
+      const createdAt = input.created_at ?? utcNow();
+      const queued = this.runs.create(
+        RunSchema.parse({
+          id: input.id ?? newId("run"),
+          workspace_id: input.workspace_id,
+          status: "queued",
+          active_node: null,
+          suspended_approval_id: null,
+          created_at: createdAt,
+          updated_at: createdAt,
+        }),
+      );
+      const running = this.runs.setStatus(queued.id, "running", {
+        active_node: input.active_node,
+        updated_at: createdAt,
+      });
+      this.events.append({
+        workspace_id: running.workspace_id,
+        run_id: running.id,
+        kind: "run.started",
+        actor: input.actor,
+        payload: EventPayloadSchema.parse({ data: { run: running }, refs: [running.id] }),
+        idempotency_key: input.idempotency_key ?? `${running.id}:started`,
+      });
+      return running;
+    });
+  }
+
+  completeExternalRun(input: CompleteExternalRunInput): Run {
+    return this.database.transaction(() => {
+      const current = this.runs.get(input.run_id);
+      if (!current) {
+        throw new Error(`run not found: ${input.run_id}`);
+      }
+      if (current.status === "completed" || current.status === "failed") {
+        return current;
+      }
+      const completed = this.runs.setStatus(current.id, "completed", {
+        active_node: input.active_node,
+      });
+      this.events.append({
+        workspace_id: completed.workspace_id,
+        run_id: completed.id,
+        kind: "run.completed",
+        actor: input.actor,
+        payload: EventPayloadSchema.parse({
+          data: { run: completed, ...(input.data ?? {}) },
+          refs: [completed.id, ...(input.refs ?? [])],
+        }),
+        idempotency_key: input.idempotency_key ?? `${completed.id}:completed`,
+      });
+      return completed;
+    });
+  }
+
+  private ensureTaskEnvelope(input: {
+    id?: string | null | undefined;
+    workspace_id: string;
+    run_id: string;
+    work_item_id: string;
+    worker_id: string;
+    objective: string;
+    allowed_capabilities: string[];
+    approval_gates: string[];
+    actor: string;
+  }): TaskEnvelope {
+    const task = this.tasks.save(
+      TaskEnvelopeSchema.parse({
+        id: input.id ?? newId("task"),
+        workspace_id: input.workspace_id,
+        run_id: input.run_id,
+        work_item_id: input.work_item_id,
+        from_agent: null,
+        to_agent: input.worker_id,
+        objective: input.objective,
+        allowed_capabilities: input.allowed_capabilities,
+        approval_gates: input.approval_gates,
+      }),
+    );
+    this.events.append({
+      workspace_id: task.workspace_id,
+      run_id: task.run_id,
+      kind: "task.envelope.created",
+      actor: input.actor,
+      payload: EventPayloadSchema.parse({ data: { task_envelope: task }, refs: [task.id] }),
+      idempotency_key: `${task.id}:created`,
+    });
+    return task;
+  }
+
+  private taskEnvelopeIdForEnvelope(envelopeId: string): string {
+    const suffix =
+      envelopeId.split("_", 2)[1] ?? createHash("sha256").update(envelopeId).digest("hex");
+    return `task_${suffix.padEnd(32, "0").slice(0, 32)}`;
   }
 
   private requireWorkItem(workItemId: string): WorkItem {

@@ -249,6 +249,7 @@ export const BoundedWorkEnvelopeSchema = z
     workspace_id: CanonicalIdSchema,
     work_item_id: CanonicalIdSchema,
     run_id: CanonicalIdSchema.nullable().default(null),
+    task_envelope_id: CanonicalIdSchema.nullable().default(null),
     worker_id: CanonicalIdSchema,
     issued_by: ExternalActorRefSchema,
     objective: z.string(),

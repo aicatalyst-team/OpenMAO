@@ -218,8 +218,8 @@ describe("TypeScript persistence", () => {
     expect(envelope.run_id).toBe(run.id);
     expect(tools.listForWorkspace(tool.workspace_id)).toEqual([tool]);
     expect(workers.listForWorkspace(worker.workspace_id)).toEqual([worker]);
-    expect(envelopes.listForWorkItem(workItem.id)).toEqual([envelope]);
-    expect(outcomes.listForWorkItem(workItem.id)).toEqual([outcome]);
+    expect(envelopes.listForWorkItem(workItem.workspace_id, workItem.id)).toEqual([envelope]);
+    expect(outcomes.listForWorkItem(workItem.workspace_id, workItem.id)).toEqual([outcome]);
     expect(outcomes.record(outcome)).toEqual(outcome);
     expect(() =>
       outcomes.record(
@@ -230,7 +230,9 @@ describe("TypeScript persistence", () => {
         }),
       ),
     ).toThrow(WorkerOutcomeConflictError);
-    expect(ingestionRecords.listForWorkItem(workItem.id)).toEqual([ingestion]);
+    expect(ingestionRecords.listForWorkItem(workItem.workspace_id, workItem.id)).toEqual([
+      ingestion,
+    ]);
     expect(ingestionRecords.listForWorkspace(workItem.workspace_id)).toEqual([ingestion]);
     expect(ingestionRecords.record(ingestion)).toEqual(ingestion);
     expect(() =>

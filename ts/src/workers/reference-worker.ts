@@ -1,17 +1,11 @@
 import type { CapabilityInvocation } from "../capabilities/index.js";
-import {
-  CapabilityCallSchema,
-  CapabilitySchema,
-  EventPayloadSchema,
-  RunSchema,
-  TaskEnvelopeSchema,
-  utcNow,
-} from "../contracts/index.js";
+import { CapabilityCallSchema, CapabilitySchema } from "../contracts/index.js";
 import { ApprovalService } from "../governance/index.js";
-import { type Database, EventStore, RunStore, TaskEnvelopeStore } from "../persistence/index.js";
+import type { Database } from "../persistence/index.js";
 import { createLocalCapabilityRegistry } from "../runtime/capabilities.js";
 import { OpenMaoLocalClient } from "../sdk/index.js";
 import { SpineService, WORKSPACE_ID } from "../spine/index.js";
+import { WorkService } from "../work/index.js";
 import { WorldModelService } from "../world/index.js";
 
 export const REFERENCE_WORKER_ID = "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -49,6 +43,7 @@ type ReferenceWorkerContext = {
   work_item_id: string;
   work_status: string;
   envelope_id: string;
+  task_id: string;
   registry: ReturnType<typeof createLocalCapabilityRegistry>;
 };
 
@@ -152,11 +147,13 @@ function prepareReferenceWorkerDemo(database: Database): ReferenceWorkerContext 
           reviewer: "human",
           idempotency_key: "reference-worker:work:assigned",
         });
-  const run = ensureReferenceRun(database);
-  ensureReferenceTask(database, {
-    run_id: run.id,
-    work_item_id: assigned.id,
-    worker_id: worker.id,
+  const workService = new WorkService(database);
+  const run = workService.ensureExternalRun({
+    id: REFERENCE_RUN_ID,
+    workspace_id: WORKSPACE_ID,
+    active_node: "reference_worker_started",
+    actor: "reference_worker_demo",
+    idempotency_key: `${REFERENCE_RUN_ID}:started`,
   });
   const envelope =
     client.envelopes(assigned.id).find((item) => item.id === REFERENCE_ENVELOPE_ID) ??
@@ -164,6 +161,7 @@ function prepareReferenceWorkerDemo(database: Database): ReferenceWorkerContext 
       id: REFERENCE_ENVELOPE_ID,
       work_item_id: assigned.id,
       run_id: run.id,
+      task_envelope_id: REFERENCE_TASK_ID,
       worker_id: worker.id,
       allowed_capabilities: [REFERENCE_CAPABILITY_NAME],
       approval_gates: [REFERENCE_CAPABILITY_APPROVAL_ID],
@@ -178,73 +176,9 @@ function prepareReferenceWorkerDemo(database: Database): ReferenceWorkerContext 
     work_item_id: assigned.id,
     work_status: assigned.status,
     envelope_id: envelope.id,
+    task_id: envelope.task_envelope_id ?? REFERENCE_TASK_ID,
     registry,
   };
-}
-
-function ensureReferenceRun(database: Database) {
-  const runs = new RunStore(database);
-  const events = new EventStore(database);
-  let run = runs.get(REFERENCE_RUN_ID);
-  if (!run) {
-    const createdAt = utcNow();
-    runs.create(
-      RunSchema.parse({
-        id: REFERENCE_RUN_ID,
-        workspace_id: WORKSPACE_ID,
-        status: "queued",
-        active_node: null,
-        suspended_approval_id: null,
-        created_at: createdAt,
-        updated_at: createdAt,
-      }),
-    );
-    run = runs.setStatus(REFERENCE_RUN_ID, "running", {
-      active_node: "reference_worker_started",
-      updated_at: createdAt,
-    });
-    events.append({
-      workspace_id: run.workspace_id,
-      run_id: run.id,
-      kind: "run.started",
-      actor: "reference_worker_demo",
-      payload: EventPayloadSchema.parse({ data: { run }, refs: [run.id] }),
-      idempotency_key: `${run.id}:started`,
-    });
-  } else if (run.status === "queued") {
-    run = runs.setStatus(run.id, "running", {
-      active_node: "reference_worker_started",
-    });
-  }
-  return run;
-}
-
-function ensureReferenceTask(
-  database: Database,
-  input: { run_id: string; work_item_id: string; worker_id: string },
-) {
-  const task = new TaskEnvelopeStore(database).save(
-    TaskEnvelopeSchema.parse({
-      id: REFERENCE_TASK_ID,
-      workspace_id: WORKSPACE_ID,
-      run_id: input.run_id,
-      work_item_id: input.work_item_id,
-      from_agent: null,
-      to_agent: input.worker_id,
-      objective: "Execute the bounded reference-worker task.",
-      allowed_capabilities: [REFERENCE_CAPABILITY_NAME],
-      approval_gates: [REFERENCE_CAPABILITY_APPROVAL_ID],
-    }),
-  );
-  new EventStore(database).append({
-    workspace_id: task.workspace_id,
-    run_id: task.run_id,
-    kind: "task.envelope.created",
-    actor: "reference_worker_demo",
-    payload: EventPayloadSchema.parse({ data: { task_envelope: task }, refs: [task.id] }),
-    idempotency_key: `${task.id}:created`,
-  });
-  return task;
 }
 
 function invokeReferenceCapability(context: ReferenceWorkerContext): CapabilityInvocation {
@@ -262,7 +196,7 @@ function invokeReferenceCapability(context: ReferenceWorkerContext): CapabilityI
         actor_id: context.worker_id,
         display_name: context.worker_name,
       },
-      task_id: REFERENCE_TASK_ID,
+      task_id: context.task_id,
       credential_handle: REFERENCE_CREDENTIAL_HANDLE,
       side_effecting: true,
       audit_payload: { intent: "prove OpenMAO-gated external worker side effect" },
@@ -324,7 +258,17 @@ function finalizeReferenceWorkerDemo(
           idempotency_key: "reference-worker:work:reviewed",
         });
 
-  const run = completeReferenceRun(database, invocation);
+  const run = new WorkService(database).completeExternalRun({
+    run_id: REFERENCE_RUN_ID,
+    active_node: "reference_worker_completed",
+    actor: "reference_worker_demo",
+    refs: [invocation.call.id, ...(invocation.result?.id ? [invocation.result.id] : [])],
+    data: {
+      capability_call_id: invocation.call.id,
+      capability_result_id: invocation.result?.id ?? null,
+    },
+    idempotency_key: `${REFERENCE_RUN_ID}:completed`,
+  });
   const world = new WorldModelService(database).rebuild(WORKSPACE_ID, REFERENCE_RUN_ID);
 
   return {
@@ -344,44 +288,12 @@ function finalizeReferenceWorkerDemo(
   };
 }
 
-function completeReferenceRun(database: Database, invocation: CapabilityInvocation) {
-  const runs = new RunStore(database);
-  const events = new EventStore(database);
-  let run = runs.get(REFERENCE_RUN_ID);
-  if (!run) {
-    throw new Error(`reference worker run not found: ${REFERENCE_RUN_ID}`);
-  }
-  if (run.status !== "completed" && run.status !== "failed") {
-    run = runs.setStatus(run.id, "completed", {
-      active_node: "reference_worker_completed",
-    });
-    events.append({
-      workspace_id: run.workspace_id,
-      run_id: run.id,
-      kind: "run.completed",
-      actor: "reference_worker_demo",
-      payload: EventPayloadSchema.parse({
-        data: {
-          run,
-          capability_call_id: invocation.call.id,
-          capability_result_id: invocation.result?.id ?? null,
-        },
-        refs: [run.id, invocation.call.id, invocation.result?.id].filter((ref): ref is string =>
-          Boolean(ref),
-        ),
-      }),
-      idempotency_key: `${run.id}:completed`,
-    });
-  }
-  return run;
-}
-
 function referenceResult(
   database: Database,
   context: ReferenceWorkerContext,
   invocation: CapabilityInvocation,
 ): ReferenceWorkerDemoResult {
-  const run = new RunStore(database).get(REFERENCE_RUN_ID);
+  const run = new WorkService(database).getRun(REFERENCE_RUN_ID);
   const world = new WorldModelService(database).rebuild(WORKSPACE_ID, REFERENCE_RUN_ID);
 
   return {

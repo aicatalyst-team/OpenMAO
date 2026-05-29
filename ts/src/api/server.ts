@@ -28,7 +28,10 @@ import {
   WorkspaceStore,
 } from "../persistence/index.js";
 import { createApprovalServiceWithApplications } from "../runtime/approvals.js";
-import { createLocalCapabilityRegistry } from "../runtime/capabilities.js";
+import {
+  createLocalCapabilityRegistry,
+  materializeRejectedCapabilityApproval,
+} from "../runtime/capabilities.js";
 import { openLocalDatabase } from "../runtime/local.js";
 import {
   COORDINATOR_AGENT_ID,
@@ -184,6 +187,11 @@ function approvalForContext(database: Database, approvalId: string, workspaceId:
   return approval?.workspace_id === workspaceId ? approval : null;
 }
 
+function workForContext(database: Database, workId: string, workspaceId: string) {
+  const work = new WorkItemStore(database).get(workId);
+  return work?.workspace_id === workspaceId ? work : null;
+}
+
 function requireUnambiguousWriteWorkspace(
   response: ServerResponse,
   database: Database,
@@ -215,6 +223,10 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === "string")
     : [];
+}
+
+function stringField(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 export function createServer(options: ServerOptions = {}) {
@@ -387,6 +399,28 @@ export function createServer(options: ServerOptions = {}) {
         const source = body.source && typeof body.source === "object" ? body.source : {};
         const actor = body.actor && typeof body.actor === "object" ? body.actor : {};
         const payload = body.payload;
+        const sourceProvider = stringField((source as { provider?: unknown }).provider);
+        const sourceId = stringField((source as { external_id?: unknown }).external_id);
+        const sourceUrl = stringField((source as { external_url?: unknown }).external_url);
+        const actorType = stringField((actor as { actor_type?: unknown }).actor_type);
+        const actorId = stringField((actor as { actor_id?: unknown }).actor_id);
+        const idempotencyKey = stringField(body.idempotency_key);
+        if (!sourceProvider) {
+          sendJson(response, 400, { error: "missing_source_provider" });
+          return;
+        }
+        if (!sourceId && !sourceUrl) {
+          sendJson(response, 400, { error: "missing_source_identity" });
+          return;
+        }
+        if (!actorType || !actorId) {
+          sendJson(response, 400, { error: "missing_actor_identity" });
+          return;
+        }
+        if (!idempotencyKey) {
+          sendJson(response, 400, { error: "missing_idempotency_key" });
+          return;
+        }
         sendJson(
           response,
           201,
@@ -394,28 +428,13 @@ export function createServer(options: ServerOptions = {}) {
             id: typeof body.id === "string" ? body.id : null,
             workspace_id: context.workspaceId,
             source: {
-              provider:
-                typeof (source as { provider?: unknown }).provider === "string"
-                  ? (source as { provider: string }).provider
-                  : "openmao",
-              external_id:
-                typeof (source as { external_id?: unknown }).external_id === "string"
-                  ? (source as { external_id: string }).external_id
-                  : null,
-              external_url:
-                typeof (source as { external_url?: unknown }).external_url === "string"
-                  ? (source as { external_url: string }).external_url
-                  : null,
+              provider: sourceProvider,
+              external_id: sourceId,
+              external_url: sourceUrl,
             },
             actor: {
-              actor_type:
-                typeof (actor as { actor_type?: unknown }).actor_type === "string"
-                  ? ((actor as { actor_type: string }).actor_type as never)
-                  : "worker",
-              actor_id:
-                typeof (actor as { actor_id?: unknown }).actor_id === "string"
-                  ? (actor as { actor_id: string }).actor_id
-                  : context.actor,
+              actor_type: actorType as never,
+              actor_id: actorId,
               display_name:
                 typeof (actor as { display_name?: unknown }).display_name === "string"
                   ? (actor as { display_name: string }).display_name
@@ -429,7 +448,7 @@ export function createServer(options: ServerOptions = {}) {
               payload && typeof payload === "object" && !Array.isArray(payload)
                 ? (payload as Record<string, unknown>)
                 : {},
-            idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : "",
+            idempotency_key: idempotencyKey,
           }),
         );
         return;
@@ -585,10 +604,17 @@ export function createServer(options: ServerOptions = {}) {
         return;
       }
       if (request.method === "GET" && approvalRoute.workOutcomeId) {
+        if (!workForContext(database, approvalRoute.workOutcomeId, context.workspaceId)) {
+          sendNotFound(response);
+          return;
+        }
         sendJson(
           response,
           200,
-          new WorkerOutcomeStore(database).listForWorkItem(approvalRoute.workOutcomeId),
+          new WorkerOutcomeStore(database).listForWorkItem(
+            context.workspaceId,
+            approvalRoute.workOutcomeId,
+          ),
         );
         return;
       }
@@ -622,10 +648,17 @@ export function createServer(options: ServerOptions = {}) {
         return;
       }
       if (request.method === "GET" && approvalRoute.workEnvelopeId) {
+        if (!workForContext(database, approvalRoute.workEnvelopeId, context.workspaceId)) {
+          sendNotFound(response);
+          return;
+        }
         sendJson(
           response,
           200,
-          new BoundedWorkEnvelopeStore(database).listForWorkItem(approvalRoute.workEnvelopeId),
+          new BoundedWorkEnvelopeStore(database).listForWorkItem(
+            context.workspaceId,
+            approvalRoute.workEnvelopeId,
+          ),
         );
         return;
       }
@@ -709,13 +742,16 @@ export function createServer(options: ServerOptions = {}) {
           return;
         }
         if (url.pathname.endsWith("/reject")) {
+          const rejected = new ApprovalService(database).reject(approvalRoute.approvalId, {
+            workspace_id: context.workspaceId,
+            actor: context.actor,
+          });
           sendJson(
             response,
             200,
-            new ApprovalService(database).reject(approvalRoute.approvalId, {
-              workspace_id: context.workspaceId,
-              actor: context.actor,
-            }),
+            rejected.payload.target_type === "capability_call"
+              ? materializeRejectedCapabilityApproval(database, rejected)
+              : rejected,
           );
         } else if (approvalRoute.approvalId === PROMOTION_APPROVAL_ID) {
           if (!requireDemoWorkspace(response, context.workspaceId)) {

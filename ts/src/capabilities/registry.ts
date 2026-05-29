@@ -100,6 +100,7 @@ export class CapabilityRegistryService {
       }
 
       this.validatePayload(call.input, capability.canonical_input_schema, "input");
+      this.validateSafeCallMaterial(call);
       const existingCall = this.calls.getByIdempotencyKey(call.workspace_id, call.idempotency_key);
       if (!existingCall) {
         this.requireProviderExecutableRun(call);
@@ -576,6 +577,15 @@ export class CapabilityRegistryService {
     validateSchemaValue(payload, schema, name);
   }
 
+  private validateSafeCallMaterial(call: CapabilityCall): void {
+    if (call.credential_handle) {
+      validateCredentialHandle(call.credential_handle);
+    }
+    assertNoSensitiveMaterial(call.input, "input");
+    assertNoSensitiveMaterial(call.audit_payload, "audit_payload");
+    assertNoSensitiveString(call.idempotency_key, "idempotency_key");
+  }
+
   private approvalIdForCall(call: CapabilityCall): string {
     return `approval_${this.idSuffix(call.id)}`;
   }
@@ -649,13 +659,72 @@ function validateSchemaValue(value: unknown, schema: Record<string, unknown>, pa
     if (properties && (typeof properties !== "object" || Array.isArray(properties))) {
       throw new CapabilityRegistryError(`capability ${path} schema properties must be an object`);
     }
+    const propertyMap = properties as Record<string, unknown> | undefined;
+    const additionalProperties = schema.additionalProperties;
     for (const [key, item] of Object.entries(objectValue)) {
-      const propertySchema = (properties as Record<string, unknown> | undefined)?.[key];
+      const propertySchema = propertyMap?.[key];
       if (propertySchema && typeof propertySchema === "object" && !Array.isArray(propertySchema)) {
         validateSchemaValue(item, propertySchema as Record<string, unknown>, `${path}.${key}`);
+      } else if (propertySchema === undefined && additionalProperties !== true) {
+        if (
+          additionalProperties &&
+          typeof additionalProperties === "object" &&
+          !Array.isArray(additionalProperties)
+        ) {
+          validateSchemaValue(
+            item,
+            additionalProperties as Record<string, unknown>,
+            `${path}.${key}`,
+          );
+        } else {
+          throw new CapabilityRegistryError(`capability ${path} has unknown field: ${key}`);
+        }
       }
     }
     return;
   }
   throw new CapabilityRegistryError(`capability ${path} schema type is unsupported`);
+}
+
+const SENSITIVE_KEY_PATTERN =
+  /(?:password|passwd|secret|api[_-]?key|access[_-]?token|refresh[_-]?token|bearer|private[_-]?key|client[_-]?secret|credential[_-]?value)/i;
+const SENSITIVE_VALUE_PATTERN =
+  /(?:sk-[A-Za-z0-9_-]{8,}|gh[pousr]_[A-Za-z0-9_]{8,}|xox[baprs]-[A-Za-z0-9-]{8,}|Bearer\s+\S+|-----BEGIN [^-]+PRIVATE KEY-----|(?:secret|token|password|api[_-]?key)[A-Za-z0-9_:-]{6,})/i;
+const CREDENTIAL_HANDLE_PATTERN = /^cred_[A-Za-z0-9_.:-]+$/;
+
+function validateCredentialHandle(handle: string): void {
+  if (!CREDENTIAL_HANDLE_PATTERN.test(handle)) {
+    throw new CapabilityRegistryError("credential handle must be a non-secret cred_* identifier");
+  }
+  assertNoSensitiveString(handle, "credential_handle");
+}
+
+function assertNoSensitiveMaterial(value: unknown, path: string): void {
+  if (value === null || value === undefined) {
+    return;
+  }
+  if (typeof value === "string") {
+    assertNoSensitiveString(value, path);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      assertNoSensitiveMaterial(item, `${path}[${index}]`);
+    }
+    return;
+  }
+  if (typeof value === "object") {
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      if (SENSITIVE_KEY_PATTERN.test(key)) {
+        throw new CapabilityRegistryError(`capability ${path} contains sensitive key: ${key}`);
+      }
+      assertNoSensitiveMaterial(item, `${path}.${key}`);
+    }
+  }
+}
+
+function assertNoSensitiveString(value: string, path: string): void {
+  if (SENSITIVE_VALUE_PATTERN.test(value)) {
+    throw new CapabilityRegistryError(`capability ${path} contains secret-shaped material`);
+  }
 }
