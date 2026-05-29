@@ -6,9 +6,9 @@ All notable public release changes for OpenMAO are documented here.
 
 No unreleased changes.
 
-## v0.4.0-rc.1 - 2026-05-29
+## v0.4.0 - 2026-05-29
 
-Release candidate adding the first real, side-effecting capability provider behind OpenMAO authority.
+Adds the first real, side-effecting capability provider behind OpenMAO authority.
 
 ### Added
 

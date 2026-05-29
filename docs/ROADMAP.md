@@ -34,7 +34,7 @@ polished control plane.
 
 ## Phase 0: Substrate Skeleton
 
-**Current release. Autonomy:** `supervised`.
+**Foundational release (`v0.1.0`). Autonomy:** `supervised`.
 
 The frame of the flywheel exists; it does not yet turn. Memory promotion is manual, and
 self-correction and self-learning are seams only.
@@ -100,7 +100,7 @@ narrow and developer-visible, such as a GitHub issue/comment/pull-request action
 be handled by provider code and never exposed to workers, events, traces, or capability payloads.
 Policy and approval must run before execution, and approval resume must execute at most once.
 
-> Status: `v0.4.0-rc.1` ships the first real provider — an opt-in GitHub issue-comment provider with
+> Status: `v0.4.0` ships the first real provider — an opt-in GitHub issue-comment provider with
 > an environment-backed credential broker and capability-bound credential handles. It is registered
 > only when explicitly enabled, so the default runtime stays mock-only and credential-free.
 

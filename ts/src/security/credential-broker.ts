@@ -46,7 +46,7 @@ export class EnvCredentialBroker implements CredentialBroker {
   resolve(handle: string): string | null {
     validateCredentialHandle(handle);
     const value = this.env[handleToEnvKey(handle, this.prefix)];
-    return value !== undefined && value.trim().length > 0 ? value : null;
+    return value !== undefined && value.trim().length > 0 ? value.trim() : null;
   }
 }
 
@@ -63,7 +63,7 @@ export class StaticCredentialBroker implements CredentialBroker {
 
   resolve(handle: string): string | null {
     const value = this.handles.get(handle);
-    return value !== undefined && value.trim().length > 0 ? value : null;
+    return value !== undefined && value.trim().length > 0 ? value.trim() : null;
   }
 }
 

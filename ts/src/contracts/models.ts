@@ -348,7 +348,11 @@ export const CapabilityCallSchema = z
     requested_by: z.string(),
     external_actor: ExternalActorRefSchema.nullable().default(null),
     task_id: CanonicalIdSchema,
-    credential_handle: z.string().nullable().default(null),
+    credential_handle: z
+      .string()
+      .regex(/^cred_[A-Za-z0-9_.:-]+$/, "credential_handle must be a cred_* handle")
+      .nullable()
+      .default(null),
     side_effecting: z.boolean().default(false),
     audit_payload: recordSchema.default({}),
     risk_level: z.enum(["low", "medium", "high"]).default("low"),
