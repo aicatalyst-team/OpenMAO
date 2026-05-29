@@ -100,6 +100,10 @@ narrow and developer-visible, such as a GitHub issue/comment/pull-request action
 be handled by provider code and never exposed to workers, events, traces, or capability payloads.
 Policy and approval must run before execution, and approval resume must execute at most once.
 
+> Status: `v0.4.0-rc.1` ships the first real provider — an opt-in GitHub issue-comment provider with
+> an environment-backed credential broker and capability-bound credential handles. It is registered
+> only when explicitly enabled, so the default runtime stays mock-only and credential-free.
+
 In OpenMAO terms, tools are concrete things agents want to use: GitHub, email, Slack, a database, a
 browser, a shell, an MCP server, or an internal API. Capabilities are the governed declarations that
 expose those tools safely: named action, schema, provider, risk, credential handle, policy, approval
