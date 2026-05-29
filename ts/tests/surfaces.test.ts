@@ -108,6 +108,8 @@ describe("TypeScript operator surfaces", () => {
     const outcomeOutput = capture();
     const outcomesOutput = capture();
     const reviewOutput = capture();
+    const ingestOutput = capture();
+    const ingestionListOutput = capture();
 
     expect(await runCli(["init"], { dbPath, write: initOutput.write })).toBe(0);
     expect(
@@ -218,6 +220,30 @@ describe("TypeScript operator surfaces", () => {
         write: reviewOutput.write,
       }),
     ).toBe(0);
+    expect(
+      await runCli(
+        [
+          "ingest",
+          "record",
+          "--id",
+          "ingest_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "--kind",
+          "trace",
+          "--source-provider",
+          "openmao",
+          "--actor-id",
+          "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "--work",
+          "work_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "--payload",
+          '{"observed":true}',
+          "--idempotency-key",
+          "worker:reference:trace",
+        ],
+        { dbPath, write: ingestOutput.write },
+      ),
+    ).toBe(0);
+    expect(await runCli(["ingest", "list"], { dbPath, write: ingestionListOutput.write })).toBe(0);
 
     expect(JSON.parse(workerOutput.lines[0] ?? "{}").id).toBe(
       "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -231,6 +257,8 @@ describe("TypeScript operator surfaces", () => {
     expect(JSON.parse(outcomeOutput.lines[0] ?? "{}").status).toBe("completed");
     expect(JSON.parse(outcomesOutput.lines[0] ?? "[]")).toHaveLength(1);
     expect(JSON.parse(reviewOutput.lines[0] ?? "{}").status).toBe("done");
+    expect(JSON.parse(ingestOutput.lines[0] ?? "{}").kind).toBe("trace");
+    expect(JSON.parse(ingestionListOutput.lines[0] ?? "[]")).toHaveLength(1);
   });
 
   it("serves demo, approvals, world, and console over HTTP", async () => {
@@ -436,6 +464,22 @@ describe("TypeScript operator surfaces", () => {
         headers: jsonHeaders,
         body: JSON.stringify({ decision: "accepted", notes: "Looks good." }),
       }).then((response) => response.json())) as { status: string };
+      const ingestion = (await fetch(`${baseUrl}/ingestion`, {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify({
+          id: "ingest_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          kind: "trace",
+          source: { provider: "openmao", external_id: "reference-worker" },
+          actor: { actor_type: "worker", actor_id: worker.id },
+          target_work_item_id: work.id,
+          payload: { observed: true },
+          idempotency_key: "worker:reference:trace",
+        }),
+      }).then((response) => response.json())) as { id: string; kind: string };
+      const ingestionList = (await fetch(`${baseUrl}/ingestion`, {
+        headers: operatorHeaders,
+      }).then((response) => response.json())) as unknown[];
       const envelopes = (await fetch(`${baseUrl}/work/${work.id}/envelopes`, {
         headers: operatorHeaders,
       }).then((response) => response.json())) as unknown[];
@@ -453,6 +497,8 @@ describe("TypeScript operator surfaces", () => {
       expect(outcome.work_item_id).toBe(work.id);
       expect(outcomes).toHaveLength(1);
       expect(reviewed.status).toBe("done");
+      expect(ingestion.kind).toBe("trace");
+      expect(ingestionList).toHaveLength(1);
       expect(envelopes).toHaveLength(1);
       expect(events.map((event) => event.kind)).toEqual(
         expect.arrayContaining([
@@ -461,6 +507,7 @@ describe("TypeScript operator surfaces", () => {
           "work.assigned",
           "work.outcome_submitted",
           "work.reviewed",
+          "ingestion.recorded",
         ]),
       );
     } finally {

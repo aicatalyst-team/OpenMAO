@@ -6,12 +6,14 @@ import {
 } from "node:http";
 
 import { ApprovalService } from "../governance/index.js";
+import { IngestionService } from "../ingestion/index.js";
 import {
   AgentStore,
   BoundedWorkEnvelopeStore,
   CapabilityStore,
   type Database,
   EventStore,
+  IngestionRecordStore,
   MemoryEntryStore,
   OrganizationStore,
   PromotionCandidateStore,
@@ -321,6 +323,69 @@ export function createServer(options: ServerOptions = {}) {
             allowed_capabilities: stringArray(body.allowed_capabilities),
             actor: context.actor,
             idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : null,
+          }),
+        );
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/ingestion") {
+        sendJson(
+          response,
+          200,
+          new IngestionRecordStore(database).listForWorkspace(context.workspaceId),
+        );
+        return;
+      }
+      if (request.method === "POST" && url.pathname === "/ingestion") {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const body = await readJsonBody(request);
+        const source = body.source && typeof body.source === "object" ? body.source : {};
+        const actor = body.actor && typeof body.actor === "object" ? body.actor : {};
+        const payload = body.payload;
+        sendJson(
+          response,
+          201,
+          new IngestionService(database).record({
+            id: typeof body.id === "string" ? body.id : null,
+            workspace_id: context.workspaceId,
+            source: {
+              provider:
+                typeof (source as { provider?: unknown }).provider === "string"
+                  ? (source as { provider: string }).provider
+                  : "openmao",
+              external_id:
+                typeof (source as { external_id?: unknown }).external_id === "string"
+                  ? (source as { external_id: string }).external_id
+                  : null,
+              external_url:
+                typeof (source as { external_url?: unknown }).external_url === "string"
+                  ? (source as { external_url: string }).external_url
+                  : null,
+            },
+            actor: {
+              actor_type:
+                typeof (actor as { actor_type?: unknown }).actor_type === "string"
+                  ? ((actor as { actor_type: string }).actor_type as never)
+                  : "worker",
+              actor_id:
+                typeof (actor as { actor_id?: unknown }).actor_id === "string"
+                  ? (actor as { actor_id: string }).actor_id
+                  : context.actor,
+              display_name:
+                typeof (actor as { display_name?: unknown }).display_name === "string"
+                  ? (actor as { display_name: string }).display_name
+                  : null,
+            },
+            kind: String(body.kind ?? "event") as never,
+            target_run_id: typeof body.target_run_id === "string" ? body.target_run_id : null,
+            target_work_item_id:
+              typeof body.target_work_item_id === "string" ? body.target_work_item_id : null,
+            payload:
+              payload && typeof payload === "object" && !Array.isArray(payload)
+                ? (payload as Record<string, unknown>)
+                : {},
+            idempotency_key: typeof body.idempotency_key === "string" ? body.idempotency_key : "",
           }),
         );
         return;

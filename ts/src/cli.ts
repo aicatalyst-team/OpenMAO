@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { ApprovalService } from "./governance/index.js";
+import { IngestionService } from "./ingestion/index.js";
 import {
   BoundedWorkEnvelopeStore,
   EventStore,
+  IngestionRecordStore,
   RunStore,
   WorkerIdentityStore,
   WorkerOutcomeStore,
@@ -55,6 +57,15 @@ function positionalArgs(args: string[]): string[] {
     "--summary",
     "--envelope",
     "--decision",
+    "--kind",
+    "--source-provider",
+    "--source-id",
+    "--source-url",
+    "--actor-type",
+    "--actor-id",
+    "--payload",
+    "--work",
+    "--idempotency-key",
   ]);
   const positions: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
@@ -116,7 +127,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | work list|show|create|assign|status|envelope | workers list|register | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
+        "openmao demo | demo-approve | init | run demo|resume | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
       );
       return 0;
     }
@@ -302,6 +313,35 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
         throw new Error("work id is required");
       }
       printJson(write, new BoundedWorkEnvelopeStore(database).listForWorkItem(workId));
+      return 0;
+    }
+    if (command === "ingest" && (subcommand === "list" || subcommand === "")) {
+      printJson(write, new IngestionRecordStore(database).listForWorkspace(selectedWorkspace));
+      return 0;
+    }
+    if (command === "ingest" && subcommand === "record") {
+      printJson(
+        write,
+        new IngestionService(database).record({
+          id: optionValue(args, "--id"),
+          workspace_id: selectedWorkspace,
+          source: {
+            provider: optionValue(args, "--source-provider") ?? "openmao",
+            external_id: optionValue(args, "--source-id"),
+            external_url: optionValue(args, "--source-url"),
+          },
+          actor: {
+            actor_type: (optionValue(args, "--actor-type") ?? "worker") as never,
+            actor_id: requireOption(args, "--actor-id"),
+            display_name: null,
+          },
+          kind: (optionValue(args, "--kind") ?? "event") as never,
+          target_run_id: optionValue(args, "--run"),
+          target_work_item_id: optionValue(args, "--work"),
+          payload: jsonOption(optionValue(args, "--payload")),
+          idempotency_key: requireOption(args, "--idempotency-key"),
+        }),
+      );
       return 0;
     }
     if (command === "approvals" && subcommand === "approve") {
