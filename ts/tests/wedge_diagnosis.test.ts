@@ -5,10 +5,16 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { type Event, WorkerIdentitySchema, WorkspaceSchema } from "../src/contracts/index.js";
+import {
+  type Event,
+  EventPayloadSchema,
+  WorkerIdentitySchema,
+  WorkspaceSchema,
+} from "../src/contracts/index.js";
 import { DiagnosisService } from "../src/diagnosis/index.js";
 import {
   Database,
+  EventIdempotencyConflictError,
   EventStore,
   WorkerIdentityStore,
   WorkspaceStore,
@@ -208,5 +214,47 @@ describe("wedge: M3 diagnoses real work failures end to end", () => {
     expect(replay.id).toBe(first.id);
     const createdEvents = eventsFor(workspaceId).filter((event) => event.kind === "work.created");
     expect(createdEvents).toHaveLength(1);
+  });
+
+  it("fails loud-safe (never silently double-emits) when a pre-instrumentation event is replayed under the enriched emitter", async () => {
+    // The forward-compatibility boundary: an event recorded BEFORE this change carries the causal
+    // fields at their schema defaults (actor_ref: null, produced_refs: []). The enriched emitter now
+    // produces populated causal fields, so an idempotent replay (same key, same logical data) is a
+    // genuine payload difference. We assert the SAFE outcome — a typed conflict, not a silent second
+    // event. NOTE: making this replay tolerant (treating causal fields as non-identity) would be a
+    // change to EventStore's security-relevant idempotency comparison affecting all event types; it
+    // is deferred to its own audited change. Returning the stored event would not enrich it anyway,
+    // so the real remedy for legacy rows is a one-time backfill, not relaxed idempotency.
+    const workspaceId = await seedWorkspace();
+    const events = new EventStore(database);
+    const base = {
+      workspace_id: workspaceId,
+      kind: "work.created",
+      actor: "agent_planner",
+      idempotency_key: "wedge:legacy:create",
+    };
+    const data = { work_item_id: "work_44444444444444444444444444444444" };
+
+    const legacy = events.append({
+      ...base,
+      payload: EventPayloadSchema.parse({ data, refs: [data.work_item_id] }),
+    });
+    expect(legacy.payload.actor_ref).toBeNull();
+    expect(legacy.payload.produced_refs).toEqual([]);
+
+    expect(() =>
+      events.append({
+        ...base,
+        payload: EventPayloadSchema.parse({
+          data,
+          refs: [data.work_item_id],
+          actor_ref: { actor_type: "agent", actor_id: "agent_planner", display_name: null },
+          produced_refs: [data.work_item_id],
+        }),
+      }),
+    ).toThrow(EventIdempotencyConflictError);
+
+    // The conflicting replay wrote nothing — exactly the one original event remains.
+    expect(eventsFor(workspaceId).filter((event) => event.kind === "work.created")).toHaveLength(1);
   });
 });
