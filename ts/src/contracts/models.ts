@@ -79,6 +79,16 @@ export const EventPayloadSchema = z
   .object({
     data: recordSchema.default({}),
     refs: z.array(CanonicalIdSchema).default([]),
+    // M0 causal instrumentation (all optional, default-safe). These let the M3 causal
+    // graph build its three edge types directly from the event log:
+    //   - sequential:      group by actor_ref.actor_id, order by seq
+    //   - communication:   causal_parent_id links a receiver's action to the handoff/
+    //                      message event from another actor
+    //   - data-dependency: producer's produced_refs ∩ consumer's consumed_refs
+    actor_ref: ExternalActorRefSchema.nullable().default(null),
+    produced_refs: z.array(z.string()).default([]),
+    consumed_refs: z.array(z.string()).default([]),
+    causal_parent_id: CanonicalIdSchema.nullable().default(null),
   })
   .strict();
 
@@ -409,6 +419,20 @@ export const PromotionCandidateSchema = z
   })
   .strict();
 
+export const CorroborationSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    candidate_id: CanonicalIdSchema,
+    source_memory_entry: CanonicalIdSchema,
+    corroborated_by: z.string(),
+    // Reserved for future confidence weighting; recorded but not yet used in scoring.
+    strength: z.number().min(0).max(1).default(1),
+    note: z.string().nullable().default(null),
+    created_at: UtcTimestampSchema,
+  })
+  .strict();
+
 export const ArtifactSchema = z
   .object({
     id: CanonicalIdSchema,
@@ -670,6 +694,63 @@ export const NotificationSchema = z
   })
   .strict();
 
+// M1 reversible apply. An `OrgChangeApplication` is the first-class record of an org change
+// being *actually applied* (not just marked): it captures the before/after state of every
+// target it touched, with content hashes, so the application can be verified after the fact
+// and safely reverted. One application per ratified proposal (id derived from the proposal).
+export const OrgChangeTargetStateSchema = z
+  .object({
+    // The entity the change touched (e.g. a memory entry id).
+    ref: CanonicalIdSchema,
+    before_status: z.string(),
+    after_status: z.string(),
+    // Content hashes of the canonical target serialization, before and after the mutation.
+    // Revert compares the live target against `after_hash` to detect drift (revert-conflict).
+    before_hash: z.string(),
+    after_hash: z.string(),
+  })
+  .strict();
+
+export const OrgChangeApplicationSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    proposal_id: CanonicalIdSchema,
+    change_type: z.string(),
+    applied_by: z.string(),
+    // `false` marks a destructive change that cannot be auto-reverted (none in M1).
+    reversible: z.boolean().default(true),
+    targets: z.array(OrgChangeTargetStateSchema).default([]),
+    // applied → verified (post-apply check passed) → reverted (operator undid it).
+    status: z.enum(["applied", "verified", "reverted"]).default("applied"),
+    failure_reason: z.string().nullable().default(null),
+    created_at: UtcTimestampSchema,
+    verified_at: UtcTimestampSchema.nullable().default(null),
+    reverted_at: UtcTimestampSchema.nullable().default(null),
+  })
+  .strict();
+
+// M1 operator kill-switch. When `apply_paused` is set, the apply engine refuses to mutate org
+// state (sense/report stays live). Workspace-scoped: one workspace = one self-correction loop.
+export const OrgControlStateSchema = z
+  .object({
+    workspace_id: CanonicalIdSchema,
+    apply_paused: z.boolean().default(false),
+    reason: z.string().nullable().default(null),
+    updated_by: z.string().nullable().default(null),
+    updated_at: UtcTimestampSchema,
+  })
+  .strict();
+
+export const CollectiveMemorySummarySchema = z
+  .object({
+    id: CanonicalIdSchema,
+    kind: z.enum(["episodic", "procedural", "semantic", "decision"]),
+    confidence: z.number(),
+    corroboration_count: z.number().int().default(0),
+  })
+  .strict();
+
 export const WorldModelSnapshotSchema = z
   .object({
     id: CanonicalIdSchema,
@@ -686,6 +767,7 @@ export const WorldModelSnapshotSchema = z
     recent_ingestions: z.array(CanonicalIdSchema).default([]),
     capability_gaps: z.array(z.string()).default([]),
     recent_events: z.array(CanonicalIdSchema).default([]),
+    collective_memory: z.array(CollectiveMemorySummarySchema).default([]),
     latest_run_status: RunStatusSchema.nullable().default(null),
     source_workspace_seq: z.number().int().default(0),
     source_run_seq: z.number().int().nullable().default(null),
@@ -713,6 +795,7 @@ export const canonicalModelSchemas = {
   CapabilityResult: CapabilityResultSchema,
   MemoryEntry: MemoryEntrySchema,
   PromotionCandidate: PromotionCandidateSchema,
+  Corroboration: CorroborationSchema,
   Artifact: ArtifactSchema,
   Policy: PolicySchema,
   PolicyDecision: PolicyDecisionSchema,
@@ -727,6 +810,8 @@ export const canonicalModelSchemas = {
   OrgChangeProposal: OrgChangeProposalSchema,
   Cadence: CadenceSchema,
   Notification: NotificationSchema,
+  OrgChangeApplication: OrgChangeApplicationSchema,
+  OrgControlState: OrgControlStateSchema,
   WorldModelSnapshot: WorldModelSnapshotSchema,
 } as const;
 
@@ -743,6 +828,8 @@ export const schemaDefinitions = {
   OrgChangeEvidence: OrgChangeEvidenceSchema,
   OrgChangeSourceSignal: OrgChangeSourceSignalSchema,
   CadenceKind: CadenceKindSchema,
+  OrgChangeTargetState: OrgChangeTargetStateSchema,
+  CollectiveMemorySummary: CollectiveMemorySummarySchema,
   ...canonicalModelSchemas,
 } as const;
 
@@ -776,6 +863,7 @@ export type CapabilityCall = z.infer<typeof CapabilityCallSchema>;
 export type CapabilityResult = z.infer<typeof CapabilityResultSchema>;
 export type MemoryEntry = z.infer<typeof MemoryEntrySchema>;
 export type PromotionCandidate = z.infer<typeof PromotionCandidateSchema>;
+export type Corroboration = z.infer<typeof CorroborationSchema>;
 export type Artifact = z.infer<typeof ArtifactSchema>;
 export type Policy = z.infer<typeof PolicySchema>;
 export type PolicyDecision = z.infer<typeof PolicyDecisionSchema>;
@@ -789,8 +877,12 @@ export type ModelRequest = z.infer<typeof ModelRequestSchema>;
 export type ModelResponse = z.infer<typeof ModelResponseSchema>;
 export type OrgChangeEvidence = z.infer<typeof OrgChangeEvidenceSchema>;
 export type OrgChangeSourceSignal = z.infer<typeof OrgChangeSourceSignalSchema>;
+export type CollectiveMemorySummary = z.infer<typeof CollectiveMemorySummarySchema>;
 export type OrgChangeProposal = z.infer<typeof OrgChangeProposalSchema>;
 export type CadenceKind = z.infer<typeof CadenceKindSchema>;
 export type Cadence = z.infer<typeof CadenceSchema>;
 export type Notification = z.infer<typeof NotificationSchema>;
+export type OrgChangeTargetState = z.infer<typeof OrgChangeTargetStateSchema>;
+export type OrgChangeApplication = z.infer<typeof OrgChangeApplicationSchema>;
+export type OrgControlState = z.infer<typeof OrgControlStateSchema>;
 export type WorldModelSnapshot = z.infer<typeof WorldModelSnapshotSchema>;
