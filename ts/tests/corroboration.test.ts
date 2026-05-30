@@ -264,4 +264,63 @@ describe("corroboration-based ratification", () => {
     });
     expect(collective.scope).toBe("collective");
   });
+
+  it("rejects corroboration from a rejected memory entry", () => {
+    const run = seedRunningRun();
+    const service = new PromotionService(database, {
+      collective_memory_dir: join(tmpRoot, "collective_memory"),
+    });
+    const candidate = seedPromotionFixtures(service, run);
+    service.propose(candidate, {
+      requested_by: REQUESTED_BY,
+      run_id: run.id,
+      approval_id: APPROVAL_ID,
+    });
+    const fixture = loadFixture();
+    service.writeIndividual(
+      MemoryEntrySchema.parse({
+        ...(fixture.memory_entry as Record<string, unknown>),
+        id: "mem_99999999999999999999999999999999",
+        status: "rejected",
+        content: "a discredited observation",
+      }),
+    );
+
+    expect(() =>
+      service.recordCorroboration(candidate.id, {
+        source_memory_entry: "mem_99999999999999999999999999999999",
+        corroborated_by: REQUESTED_BY,
+        run_id: run.id,
+      }),
+    ).toThrow(/rejected memory entry cannot corroborate/);
+  });
+
+  it("counts actual corroboration rows for the minimum gate, ignoring a pre-set field value", () => {
+    const run = seedRunningRun();
+    const service = new PromotionService(database, {
+      collective_memory_dir: join(tmpRoot, "collective_memory"),
+      min_corroboration: 1,
+    });
+    const fixture = loadFixture();
+    service.writeIndividual(MemoryEntrySchema.parse(fixture.memory_entry));
+    // The candidate claims a corroboration_count of 5, but no evidence rows back it.
+    const candidate = PromotionCandidateSchema.parse({
+      ...(fixture.promotion_candidate as Record<string, unknown>),
+      corroboration_count: 5,
+    });
+    service.propose(candidate, {
+      requested_by: REQUESTED_BY,
+      run_id: run.id,
+      approval_id: APPROVAL_ID,
+    });
+    new ApprovalService(database).approve(APPROVAL_ID, { workspace_id: run.workspace_id });
+
+    expect(() =>
+      service.ratifyAndWriteCollective(candidate.id, {
+        workspace_id: run.workspace_id,
+        approval_id: APPROVAL_ID,
+        resolved_at: "2026-05-27T15:20:12Z",
+      }),
+    ).toThrow(/at least 1 corroboration/);
+  });
 });

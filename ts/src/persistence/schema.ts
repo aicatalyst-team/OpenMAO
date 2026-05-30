@@ -363,6 +363,9 @@ CREATE TABLE IF NOT EXISTS promotion_corroborations (
 CREATE INDEX IF NOT EXISTS idx_promotion_corroborations_candidate
 ON promotion_corroborations(candidate_id);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_promotion_corroborations_unique
+ON promotion_corroborations(candidate_id, source_memory_entry);
+
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
