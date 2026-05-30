@@ -140,6 +140,20 @@ function actorString(actor: ExternalActorRef): string {
   return `${actor.actor_type}:${actor.actor_id}`;
 }
 
+// Wrap a bare actor string into a typed actor ref for M0 causal instrumentation, inferring the kind
+// from the string's shape. The actor_id is what drives the causal graph's sequential edges; the
+// inferred type is best-effort metadata.
+function asActorRef(actor: string): ExternalActorRef {
+  const actorType = actor.startsWith("worker:")
+    ? "worker"
+    : actor.includes("agent")
+      ? "agent"
+      : actor.includes("operator")
+        ? "operator"
+        : "system";
+  return { actor_type: actorType, actor_id: actor, display_name: null };
+}
+
 export class WorkService {
   private readonly workItems: WorkItemStore;
   private readonly workers: WorkerIdentityStore;
@@ -181,6 +195,8 @@ export class WorkService {
         payload: EventPayloadSchema.parse({
           data: { work_item: saved },
           refs: [saved.id],
+          actor_ref: asActorRef(input.actor),
+          produced_refs: [saved.id],
         }),
         idempotency_key: input.idempotency_key ?? `work:${saved.id}:created`,
       });
@@ -239,6 +255,8 @@ export class WorkService {
             status: updated.status,
           },
           refs: [updated.id],
+          actor_ref: asActorRef(input.actor),
+          consumed_refs: [updated.id],
         }),
         idempotency_key: input.idempotency_key ?? `work:${updated.id}:assigned:${updated.owner}`,
       });
@@ -262,6 +280,8 @@ export class WorkService {
             reason: input.reason ?? null,
           },
           refs: [updated.id],
+          actor_ref: asActorRef(input.actor),
+          consumed_refs: [updated.id],
         }),
         idempotency_key: input.idempotency_key ?? `work:${updated.id}:status:${updated.status}`,
       });
@@ -321,6 +341,8 @@ export class WorkService {
             work_item_status: nextStatus,
           },
           refs: [saved.id, saved.work_item_id, saved.envelope_id, saved.worker_id],
+          actor_ref: asActorRef(input.actor ?? `worker:${saved.worker_id}`),
+          consumed_refs: [saved.work_item_id, saved.envelope_id],
         }),
         idempotency_key: `${saved.id}:event`,
       });
