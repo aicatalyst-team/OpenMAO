@@ -172,6 +172,17 @@ describe("memory operator surfaces", () => {
         },
       ).then((response) => response.json())) as { candidate: { corroboration_count: number } };
       expect(corroborate.candidate.corroboration_count).toBe(1);
+
+      // Idempotent retry: re-POSTing the same corroboration does not double-count.
+      const retry = (await fetch(
+        `${baseUrl}/memory/promotions/${CANDIDATE}/corroborate?workspace_id=${workspaceId}`,
+        {
+          method: "POST",
+          headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify({ source_memory_entry: CORROBORATOR }),
+        },
+      ).then((response) => response.json())) as { candidate: { corroboration_count: number } };
+      expect(retry.candidate.corroboration_count).toBe(1);
     } finally {
       await new Promise<void>((resolve) => {
         server.close(() => resolve());

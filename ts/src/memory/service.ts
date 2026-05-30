@@ -42,6 +42,17 @@ export class CollectiveMemoryEffectError extends PromotionServiceError {
   }
 }
 
+function deterministicCorroborationId(
+  workspaceId: string,
+  candidateId: string,
+  sourceMemoryEntry: string,
+): string {
+  const digest = createHash("sha256")
+    .update(`${workspaceId}:${candidateId}:${sourceMemoryEntry}`)
+    .digest("hex");
+  return `corrob_${digest.slice(0, 32)}`;
+}
+
 export class PromotionService {
   private readonly entries: MemoryEntryStore;
   private readonly candidates: PromotionCandidateStore;
@@ -163,20 +174,25 @@ export class PromotionService {
       if (!candidate) {
         throw new PromotionServiceError(`promotion candidate not found: ${candidateId}`);
       }
-      if (input.corroboration_id) {
-        const existing = this.corroborations.get(input.corroboration_id);
-        if (existing) {
-          // Idempotent retry: the same corroboration was already recorded.
-          if (
-            existing.candidate_id !== candidateId ||
-            existing.source_memory_entry !== input.source_memory_entry
-          ) {
-            throw new PromotionServiceError(
-              "corroboration id already records a different corroboration",
-            );
-          }
-          return { corroboration: existing, candidate };
+      const corroborationId =
+        input.corroboration_id ??
+        deterministicCorroborationId(
+          candidate.workspace_id,
+          candidate.id,
+          input.source_memory_entry,
+        );
+      const priorCorroboration = this.corroborations.get(corroborationId);
+      if (priorCorroboration) {
+        // Idempotent retry: this exact corroboration was already recorded.
+        if (
+          priorCorroboration.candidate_id !== candidateId ||
+          priorCorroboration.source_memory_entry !== input.source_memory_entry
+        ) {
+          throw new PromotionServiceError(
+            "corroboration id already records a different corroboration",
+          );
         }
+        return { corroboration: priorCorroboration, candidate };
       }
       if (candidate.status !== "pending") {
         throw new PromotionServiceError("only pending promotion candidates can be corroborated");
@@ -228,7 +244,7 @@ export class PromotionService {
 
       const corroboration = this.corroborations.save(
         CorroborationSchema.parse({
-          id: input.corroboration_id ?? newId("corrob"),
+          id: corroborationId,
           workspace_id: candidate.workspace_id,
           candidate_id: candidate.id,
           source_memory_entry: input.source_memory_entry,

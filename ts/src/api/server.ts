@@ -766,9 +766,8 @@ export function createServer(options: ServerOptions = {}) {
         const body = await readJsonBody(request);
         const sourceMemoryEntry =
           typeof body.source_memory_entry === "string" ? body.source_memory_entry : "";
-        const corroboratedBy = typeof body.corroborated_by === "string" ? body.corroborated_by : "";
-        if (!sourceMemoryEntry || !corroboratedBy) {
-          sendJson(response, 400, { error: "missing_corroboration_fields" });
+        if (!sourceMemoryEntry) {
+          sendJson(response, 400, { error: "missing_source_memory_entry" });
           return;
         }
         const corroborateCandidate = new PromotionCandidateStore(database).get(
@@ -783,7 +782,7 @@ export function createServer(options: ServerOptions = {}) {
           200,
           new PromotionService(database).recordCorroboration(approvalRoute.promotionCorroborateId, {
             source_memory_entry: sourceMemoryEntry,
-            corroborated_by: corroboratedBy,
+            corroborated_by: context.actor,
             run_id: typeof body.run_id === "string" ? body.run_id : null,
             note: typeof body.note === "string" ? body.note : null,
             corroboration_id:
