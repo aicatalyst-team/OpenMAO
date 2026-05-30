@@ -44,6 +44,7 @@ to the current contract model names. If a concept is not listed here, defer to
 | Capability result | `CapabilityResult` | Output, artifacts, status. |
 | Memory entry | `MemoryEntry` | Scope is `individual` or `collective`. |
 | Promotion proposal | `PromotionCandidate` | Individual memory to collective memory requires approval. |
+| Corroboration | `Corroboration` | Independent evidence (distinct actor and memory entry) supporting a promotion; raises confidence, never replaces approval. |
 | Artifact | `Artifact` | Structured output with content hash. |
 | Policy | `Policy` | Human-readable policy text in the current release. |
 | Policy outcome | `PolicyDecision` | `allow`, `block`, `require_approval`, `log_only`. |

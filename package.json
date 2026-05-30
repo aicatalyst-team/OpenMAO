@@ -1,6 +1,6 @@
 {
   "name": "openmao",
-  "version": "0.4.0",
+  "version": "0.5.0-rc.1",
   "private": true,
   "type": "module",
   "description": "Open-source substrate for accountable, self-correcting AI organizations.",

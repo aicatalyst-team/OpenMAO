@@ -68,6 +68,7 @@ OpenMAO models the durable substrate under AI work:
 - **ApprovalRequest:** durable human gate for high-risk actions.
 - **MemoryEntry:** individual or collective knowledge.
 - **PromotionCandidate:** proposal to move individual memory into trusted collective memory.
+- **Corroboration:** independent, auditable evidence (a distinct actor and a distinct memory entry) supporting a promotion candidate; it raises confidence and can gate ratification, but human approval still governs the collective write.
 - **OrgChangeProposal:** evidence-backed proposal to review or improve roles, policies, SOPs,
   workflows, memory, capabilities, or org graph.
 - **Event:** durable record of what happened.
@@ -99,7 +100,7 @@ OpenMAO work items, roles, policies, approvals, memory, events, world model
 | Organization and role registry | `ts/src/org/` |
 | Policy decisions and approvals | `ts/src/governance/` |
 | Capability registry and providers | `ts/src/capabilities/` |
-| Individual and collective memory promotion | `ts/src/memory/` |
+| Memory promotion, corroboration, and evidence-backed retrieval | `ts/src/memory/` |
 | World model projection | `ts/src/world/` |
 | Deterministic model routing | `ts/src/modeling/` |
 | Control spine and demo flow | `ts/src/spine/` |
