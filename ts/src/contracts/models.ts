@@ -79,6 +79,16 @@ export const EventPayloadSchema = z
   .object({
     data: recordSchema.default({}),
     refs: z.array(CanonicalIdSchema).default([]),
+    // M0 causal instrumentation (all optional, default-safe). These let the M3 causal
+    // graph build its three edge types directly from the event log:
+    //   - sequential:      group by actor_ref.actor_id, order by seq
+    //   - communication:   causal_parent_id links a receiver's action to the handoff/
+    //                      message event from another actor
+    //   - data-dependency: producer's produced_refs ∩ consumer's consumed_refs
+    actor_ref: ExternalActorRefSchema.nullable().default(null),
+    produced_refs: z.array(z.string()).default([]),
+    consumed_refs: z.array(z.string()).default([]),
+    causal_parent_id: CanonicalIdSchema.nullable().default(null),
   })
   .strict();
 
