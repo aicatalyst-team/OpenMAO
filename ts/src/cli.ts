@@ -2,6 +2,7 @@
 import { ChiefOfStaffService } from "./chief_of_staff/index.js";
 import { utcNow } from "./contracts/index.js";
 import { ApprovalService } from "./governance/index.js";
+import { ConsoleTransport, HeartbeatService } from "./heartbeat/index.js";
 import { IngestionService } from "./ingestion/index.js";
 import { LearningService } from "./learning/index.js";
 import { MemoryRetrievalService, PromotionService } from "./memory/index.js";
@@ -161,7 +162,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | cos init|tick|inbox|read <id> [--unread] [--at ts] | cadence list|add --kind <kind> --interval <seconds> | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
+        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | cos init|tick|run|inbox|read <id> [--unread] [--at ts] [--beats n] [--interval s] [--daemon] | cadence list|add --kind <kind> --interval <seconds> | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
       );
       return 0;
     }
@@ -647,6 +648,60 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
           at: optionValue(args, "--at") ?? utcNow(),
         }),
       );
+      return 0;
+    }
+    if (command === "cos" && subcommand === "run") {
+      if (selectedWorkspace === WORKSPACE_ID) {
+        spine.initDemoWorkspace();
+      }
+      // The heartbeat daemon: beat on a cadence and deliver digests. Bounded by default (one beat,
+      // safe for scripts); `--daemon` runs until the process is stopped, `--beats n` runs n beats.
+      const intervalSeconds = Number(optionValue(args, "--interval") ?? 3600);
+      if (!Number.isInteger(intervalSeconds) || intervalSeconds <= 0) {
+        throw new Error("--interval must be a positive integer number of seconds");
+      }
+      const daemon = args.includes("--daemon");
+      let limit = Number.POSITIVE_INFINITY;
+      if (!daemon) {
+        limit = Number(optionValue(args, "--beats") ?? 1);
+        if (!Number.isInteger(limit) || limit <= 0) {
+          throw new Error("--beats must be a positive integer");
+        }
+      }
+      // Graceful shutdown: a daemon stops at the next beat boundary on SIGINT/SIGTERM, letting the
+      // in-flight beat's transaction finish before the database is closed.
+      let stopped = false;
+      const stop = (): void => {
+        stopped = true;
+      };
+      if (daemon) {
+        process.once("SIGINT", stop);
+        process.once("SIGTERM", stop);
+      }
+      let count = 0;
+      try {
+        const beats = await new HeartbeatService(database, {
+          transport: new ConsoleTransport((line) => write(`${line}\n`)),
+        }).run({
+          workspace_id: selectedWorkspace,
+          interval_seconds: intervalSeconds,
+          clock: () => utcNow(),
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          shouldStop: () => stopped || count >= limit,
+          onBeat: () => {
+            count += 1;
+          },
+          onError: (error) => {
+            write(
+              `heartbeat beat failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          },
+        });
+        printJson(write, { workspace_id: selectedWorkspace, beats });
+      } finally {
+        process.removeListener("SIGINT", stop);
+        process.removeListener("SIGTERM", stop);
+      }
       return 0;
     }
     if (command === "cos" && subcommand === "inbox") {
