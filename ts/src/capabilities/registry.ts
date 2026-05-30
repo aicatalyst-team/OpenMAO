@@ -380,8 +380,7 @@ export class CapabilityRegistryService {
       );
     }
 
-    const requiresApproval =
-      capability.default_permission === "approval_required" || call.risk_level === "high";
+    const decision = this.governance.capabilityApprovalDecision(call, capability);
 
     return PolicyDecisionSchema.parse({
       id: newId("decision"),
@@ -390,10 +389,8 @@ export class CapabilityRegistryService {
       action: "capability.call",
       target_type: "capability_call",
       target_id: call.id,
-      outcome: requiresApproval ? "require_approval" : "allow",
-      reason: requiresApproval
-        ? `Worker capability call requires approval before execution: ${call.capability_name}.`
-        : `Worker capability is enabled and granted: ${call.capability_name}.`,
+      outcome: decision.outcome,
+      reason: decision.reason,
     });
   }
 

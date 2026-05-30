@@ -7,13 +7,76 @@ import {
   CapabilitySchema,
   EventPayloadSchema,
   newId,
+  type Organization,
   type PolicyDecision,
   PolicyDecisionSchema,
   type PolicyOutcome,
 } from "../contracts/index.js";
 import type { OrgRegistry } from "../org/index.js";
 import type { Database } from "../persistence/index.js";
-import { EventStore } from "../persistence/index.js";
+import { EventStore, OrganizationStore, WorkspaceStore } from "../persistence/index.js";
+
+type AutonomyLevel = Organization["autonomy_level"];
+
+// The autonomy dial: how much an organization may act without a human in the loop.
+// Returns a short reason if a granted, enabled call needs approval at this level, or
+// null if it may proceed. `default_permission: "approval_required"` and high risk always
+// gate; below that each level sets the threshold, monotonically (advisory ⊇ supervised
+// ⊇ bounded in what it gates).
+function approvalTrigger(
+  call: CapabilityCall,
+  capability: Capability,
+  autonomyLevel: AutonomyLevel,
+): string | null {
+  if (capability.default_permission === "approval_required") {
+    return "Approval-required capability call";
+  }
+  // Risk and side-effecting are server-authoritative: the capability's declared values
+  // are the floor, so a caller (e.g. an external worker) cannot under-report to dodge the
+  // dial. A call may raise the effective risk, never lower it below the declaration.
+  const effectiveRisk = maxRisk(capability.risk_level, call.risk_level);
+  const sideEffecting = capability.side_effecting || call.side_effecting;
+  if (effectiveRisk === "high") {
+    return "High-risk capability call";
+  }
+  if (autonomyLevel === "bounded") {
+    // Trusted to act within limits: only high-risk (handled above) needs a human.
+    return null;
+  }
+  if (sideEffecting) {
+    // supervised and advisory: approve each consequential (side-effecting) action.
+    return "Side-effecting capability call";
+  }
+  if (autonomyLevel === "advisory" && effectiveRisk !== "low") {
+    // advisory has earned nothing: even non-low-risk reads need a human.
+    return "Non-low-risk capability call";
+  }
+  return null;
+}
+
+const AUTONOMY_STRICTNESS: Record<AutonomyLevel, number> = {
+  advisory: 0,
+  supervised: 1,
+  bounded: 2,
+};
+
+// Most restrictive of the given levels — used to fail closed when a workspace is
+// ambiguous about which organization's dial applies.
+function tightestAutonomy(levels: AutonomyLevel[]): AutonomyLevel {
+  return levels.reduce((tightest, level) =>
+    AUTONOMY_STRICTNESS[level] < AUTONOMY_STRICTNESS[tightest] ? level : tightest,
+  );
+}
+
+const RISK_ORDER: Record<"low" | "medium" | "high", number> = { low: 0, medium: 1, high: 2 };
+
+// Higher of two risk levels — used to take the capability's declared risk as a floor.
+function maxRisk(
+  a: "low" | "medium" | "high",
+  b: "low" | "medium" | "high",
+): "low" | "medium" | "high" {
+  return RISK_ORDER[a] >= RISK_ORDER[b] ? a : b;
+}
 
 export class GovernanceService {
   private readonly events: EventStore;
@@ -59,15 +122,8 @@ export class GovernanceService {
     } else if (!grants.has(call.capability_name)) {
       outcome = "block";
       reason = `Agent role lacks capability grant: ${call.capability_name}.`;
-    } else if (capability.default_permission === "approval_required") {
-      outcome = "require_approval";
-      reason = `Capability requires approval before execution: ${call.capability_name}.`;
-    } else if (call.risk_level === "high") {
-      outcome = "require_approval";
-      reason = `High-risk capability call requires approval before execution: ${call.capability_name}.`;
     } else {
-      outcome = "allow";
-      reason = `Capability is enabled and granted: ${call.capability_name}.`;
+      ({ outcome, reason } = this.capabilityApprovalDecision(call, capability));
     }
 
     return PolicyDecisionSchema.parse({
@@ -80,6 +136,46 @@ export class GovernanceService {
       outcome,
       reason,
     });
+  }
+
+  // The organization's current autonomy level for a workspace. Binds policy to the
+  // workspace's designated default organization; with none recorded, or an ambiguous
+  // multi-org workspace with no resolvable default, it fails closed to the tightest
+  // level (the charter's posture for new or unproven organizations).
+  autonomyLevel(workspaceId: string): AutonomyLevel {
+    const orgs = new OrganizationStore(this.database).listForWorkspace(workspaceId);
+    if (orgs.length === 0) {
+      return "advisory";
+    }
+    if (orgs.length === 1) {
+      return orgs[0]?.autonomy_level ?? "advisory";
+    }
+    const defaultOrgId = new WorkspaceStore(this.database).get(workspaceId)?.default_org_id;
+    const chosen = defaultOrgId ? orgs.find((org) => org.id === defaultOrgId) : undefined;
+    return chosen ? chosen.autonomy_level : tightestAutonomy(orgs.map((org) => org.autonomy_level));
+  }
+
+  // Single source of truth for the dial-based approval decision (outcome + reason),
+  // shared by the spine path and the external-worker gateway so both enforcement
+  // surfaces record the same policy basis. Risk and side-effecting are taken from the
+  // capability's declared values as a floor (see approvalTrigger), so a caller cannot
+  // under-report. Payload-level "out-of-bounds"/scope modeling remains a follow-up.
+  capabilityApprovalDecision(
+    call: CapabilityCall,
+    capability: Capability,
+  ): { outcome: "allow" | "require_approval"; reason: string } {
+    const autonomyLevel = this.autonomyLevel(call.workspace_id);
+    const trigger = approvalTrigger(call, capability, autonomyLevel);
+    if (trigger) {
+      return {
+        outcome: "require_approval",
+        reason: `${trigger} requires approval at autonomy level '${autonomyLevel}' before execution: ${call.capability_name}.`,
+      };
+    }
+    return {
+      outcome: "allow",
+      reason: `Capability is enabled and granted at autonomy level '${autonomyLevel}': ${call.capability_name}.`,
+    };
   }
 
   recordDecision(decision: PolicyDecision, idempotencyKey?: string | null): PolicyDecision {

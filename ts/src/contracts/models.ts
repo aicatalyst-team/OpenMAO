@@ -112,7 +112,9 @@ export const OrganizationSchema = z
     values: z.array(z.string()).default([]),
     goals: z.array(z.string()).default([]),
     policies: z.array(z.string()).default([]),
-    autonomy_level: z.enum(["advisory", "supervised", "bounded"]).default("supervised"),
+    // New/unproven organizations start at the tightest level and earn wider autonomy.
+    // The local demo opts into `supervised` explicitly; everything else starts advisory.
+    autonomy_level: z.enum(["advisory", "supervised", "bounded"]).default("advisory"),
     config_version: z.string().default("0.1"),
   })
   .strict();
@@ -319,6 +321,9 @@ export const CapabilitySchema = z
     canonical_output_schema: recordSchema,
     providers: z.array(z.string()).default([]),
     side_effecting: z.boolean().default(false),
+    // Authoritative baseline risk of the capability. The governance dial takes the
+    // higher of this and the call's declared risk, so a caller cannot under-report.
+    risk_level: z.enum(["low", "medium", "high"]).default("low"),
     credential_handle_required: z.boolean().default(false),
     // Constrained to a cred_* shape with a field-level regex so the constraint
     // is emitted into the portable canonical JSON Schema (a .refine() would be
@@ -655,6 +660,40 @@ export const OrgChangeProposalSchema = z
   })
   .strict();
 
+export const CadenceKindSchema = z.enum(["learning_scan", "stale_approval_sweep", "status_digest"]);
+
+export const CadenceSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    kind: CadenceKindSchema,
+    // Bounded above (~10 years) so advancing next_due_at can never overflow the
+    // representable RFC3339 year range.
+    interval_seconds: z.number().int().positive().max(315_360_000),
+    enabled: z.boolean().default(true),
+    created_at: UtcTimestampSchema,
+    last_fired_at: UtcTimestampSchema.nullable().default(null),
+    next_due_at: UtcTimestampSchema,
+  })
+  .strict();
+
+export const NotificationSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    actor: z.string().default("chief_of_staff"),
+    kind: z.string(),
+    severity: z.enum(["info", "attention", "urgent"]).default("info"),
+    summary: z.string(),
+    evidence: z.array(OrgChangeEvidenceSchema).default([]),
+    refs: z.array(z.string()).default([]),
+    status: z.enum(["unread", "read"]).default("unread"),
+    source_event_id: CanonicalIdSchema.nullable().default(null),
+    created_at: UtcTimestampSchema,
+    read_at: UtcTimestampSchema.nullable().default(null),
+  })
+  .strict();
+
 // M1 reversible apply. An `OrgChangeApplication` is the first-class record of an org change
 // being *actually applied* (not just marked): it captures the before/after state of every
 // target it touched, with content hashes, so the application can be verified after the fact
@@ -769,6 +808,8 @@ export const canonicalModelSchemas = {
   ModelRequest: ModelRequestSchema,
   ModelResponse: ModelResponseSchema,
   OrgChangeProposal: OrgChangeProposalSchema,
+  Cadence: CadenceSchema,
+  Notification: NotificationSchema,
   OrgChangeApplication: OrgChangeApplicationSchema,
   OrgControlState: OrgControlStateSchema,
   WorldModelSnapshot: WorldModelSnapshotSchema,
@@ -786,6 +827,7 @@ export const schemaDefinitions = {
   CapabilityProviderRef: CapabilityProviderRefSchema,
   OrgChangeEvidence: OrgChangeEvidenceSchema,
   OrgChangeSourceSignal: OrgChangeSourceSignalSchema,
+  CadenceKind: CadenceKindSchema,
   OrgChangeTargetState: OrgChangeTargetStateSchema,
   CollectiveMemorySummary: CollectiveMemorySummarySchema,
   ...canonicalModelSchemas,
@@ -837,6 +879,9 @@ export type OrgChangeEvidence = z.infer<typeof OrgChangeEvidenceSchema>;
 export type OrgChangeSourceSignal = z.infer<typeof OrgChangeSourceSignalSchema>;
 export type CollectiveMemorySummary = z.infer<typeof CollectiveMemorySummarySchema>;
 export type OrgChangeProposal = z.infer<typeof OrgChangeProposalSchema>;
+export type CadenceKind = z.infer<typeof CadenceKindSchema>;
+export type Cadence = z.infer<typeof CadenceSchema>;
+export type Notification = z.infer<typeof NotificationSchema>;
 export type OrgChangeTargetState = z.infer<typeof OrgChangeTargetStateSchema>;
 export type OrgChangeApplication = z.infer<typeof OrgChangeApplicationSchema>;
 export type OrgControlState = z.infer<typeof OrgControlStateSchema>;

@@ -55,7 +55,7 @@ export class LearningService {
     this.workItems = new WorkItemStore(database);
   }
 
-  scan(workspaceId: string): LearningScanResult {
+  scan(workspaceId: string, at?: string): LearningScanResult {
     return this.database.transaction(() => {
       const signals = this.detectSignals(workspaceId);
       const service = new OrgChangeService(this.database);
@@ -71,6 +71,9 @@ export class LearningService {
           patch_json: signal.patch_json,
           confidence: signal.confidence,
           impact: signal.impact,
+          // When invoked from the Chief of Staff loop, `at` stamps proposals with
+          // the recorded tick time; the CLI/standalone path (null) defaults to now.
+          created_at: at ?? null,
         }),
       );
       this.events.append({

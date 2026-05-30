@@ -425,10 +425,34 @@ CREATE TABLE IF NOT EXISTS active_run_locks (
   FOREIGN KEY (workspace_id, run_id) REFERENCES runs(workspace_id, id)
 );
 
-INSERT OR IGNORE INTO schema_version (version, applied_at)
-VALUES (4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+CREATE TABLE IF NOT EXISTS cadences (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  enabled INTEGER NOT NULL,
+  next_due_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
+);
 
-PRAGMA user_version = 4;
+CREATE INDEX IF NOT EXISTS idx_cadences_due
+ON cadences(workspace_id, enabled, next_due_at);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_workspace
+ON notifications(workspace_id, created_at, id);
+
+INSERT OR IGNORE INTO schema_version (version, applied_at)
+VALUES (5, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
+PRAGMA user_version = 5;
 `;
 
 export function initializeSchema(connection: SqliteDatabase): void {

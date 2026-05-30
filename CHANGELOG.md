@@ -4,7 +4,26 @@ All notable public release changes for OpenMAO are documented here.
 
 ## Unreleased
 
-No unreleased changes.
+### Added
+
+- Chief of Staff communication loop: a built-in, scheduled organizational agent that senses
+  organization state on a cadence and reports evidence-backed observations to the operator, without
+  taking any side effect. Sensors cover institutional-learning proposals, stale operational
+  approvals, and a periodic status digest.
+- `Cadence` (standing-obligation) and `Notification` contracts and SQLite stores. Cadences are
+  organization-of-record objects, not agent-local state, so any worker can read or advance them.
+- CLI (`cos init|tick|inbox|read`, `cadence list|add`) and HTTP/console surfaces (`POST /cos/tick`,
+  `GET /cos/notifications`, `POST /cos/notifications/<id>/read`, `GET /cadences`, and a Chief of
+  Staff inbox view).
+- Every observation is attributed to the `chief_of_staff` actor and backed by a recorded event. The
+  loop takes time as an explicit parameter and records it on a `cadence.fired` event, so it replays
+  deterministically; timestamps are normalized to canonical second precision for correct due-checks.
+
+### Verification
+
+- `make check`
+- Deterministic local Chief of Staff smoke: `cos init` then `cos tick` seeds cadences, fires the
+  sensors, and surfaces evidence-backed notifications; re-ticking at the same time is a no-op.
 
 ## v0.5.0 - 2026-05-30
 

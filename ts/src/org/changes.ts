@@ -88,6 +88,7 @@ export class OrgChangeService {
             refs: [stored.id, ...stored.evidence.map((item) => item.ref_id).filter(isCanonicalId)],
           }),
           idempotency_key: `${stored.id}:proposed`,
+          timestamp: stored.created_at,
         });
       }
       const approval = new ApprovalService(this.database).request({

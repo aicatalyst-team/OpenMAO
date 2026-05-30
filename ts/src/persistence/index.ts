@@ -11,6 +11,7 @@ export {
   TraceConflictError,
   TraceStore,
 } from "./audit.js";
+export { CadenceConflictError, CadenceStore } from "./cadences.js";
 export {
   CapabilityCallConflictError,
   CapabilityCallStore,
@@ -45,6 +46,7 @@ export {
   ModelResponseConflictError,
   ModelResponseStore,
 } from "./model-io.js";
+export { NotificationStore } from "./notifications.js";
 export {
   AgentConflictError,
   AgentStore,

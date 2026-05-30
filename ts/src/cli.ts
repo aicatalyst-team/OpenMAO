@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { ChiefOfStaffService } from "./chief_of_staff/index.js";
+import { utcNow } from "./contracts/index.js";
 import { ApprovalService } from "./governance/index.js";
 import { IngestionService } from "./ingestion/index.js";
 import { LearningService } from "./learning/index.js";
@@ -83,6 +85,8 @@ function positionalArgs(args: string[]): string[] {
     "--payload",
     "--work",
     "--idempotency-key",
+    "--interval",
+    "--at",
     "--scope",
     "--min-confidence",
     "--limit",
@@ -157,7 +161,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
+        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | cos init|tick|inbox|read <id> [--unread] [--at ts] | cadence list|add --kind <kind> --interval <seconds> | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
       );
       return 0;
     }
@@ -615,6 +619,81 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       printJson(
         write,
         new WorldModelService(database).rebuild(selectedWorkspace, runId ?? fallbackRunId),
+      );
+      return 0;
+    }
+
+    if (command === "cos" && subcommand === "init") {
+      if (selectedWorkspace === WORKSPACE_ID) {
+        spine.initDemoWorkspace();
+      }
+      printJson(
+        write,
+        new ChiefOfStaffService(database).ensureDefaultCadences(
+          selectedWorkspace,
+          optionValue(args, "--at") ?? utcNow(),
+        ),
+      );
+      return 0;
+    }
+    if (command === "cos" && subcommand === "tick") {
+      if (selectedWorkspace === WORKSPACE_ID) {
+        spine.initDemoWorkspace();
+      }
+      printJson(
+        write,
+        new ChiefOfStaffService(database).tick({
+          workspace_id: selectedWorkspace,
+          at: optionValue(args, "--at") ?? utcNow(),
+        }),
+      );
+      return 0;
+    }
+    if (command === "cos" && subcommand === "inbox") {
+      printJson(
+        write,
+        new ChiefOfStaffService(database).listNotifications(selectedWorkspace, {
+          unreadOnly: args.includes("--unread"),
+        }),
+      );
+      return 0;
+    }
+    if (command === "cos" && subcommand === "read") {
+      const notificationId = positions[2];
+      if (!notificationId) {
+        throw new Error("notification id is required");
+      }
+      printJson(
+        write,
+        new ChiefOfStaffService(database).markRead({
+          workspace_id: selectedWorkspace,
+          notification_id: notificationId,
+          at: optionValue(args, "--at") ?? utcNow(),
+        }),
+      );
+      return 0;
+    }
+    if (command === "cadence" && (subcommand === "list" || subcommand === "")) {
+      printJson(write, new ChiefOfStaffService(database).listCadences(selectedWorkspace));
+      return 0;
+    }
+    if (command === "cadence" && subcommand === "add") {
+      if (selectedWorkspace === WORKSPACE_ID) {
+        spine.initDemoWorkspace();
+      }
+      const interval = Number.parseInt(requireOption(args, "--interval"), 10);
+      if (!Number.isInteger(interval) || interval <= 0) {
+        throw new Error("--interval must be a positive integer number of seconds");
+      }
+      printJson(
+        write,
+        new ChiefOfStaffService(database).addCadence({
+          workspace_id: selectedWorkspace,
+          kind: requireOption(args, "--kind") as never,
+          interval_seconds: interval,
+          at: optionValue(args, "--at") ?? utcNow(),
+          id: optionValue(args, "--id"),
+        }),
       );
       return 0;
     }
