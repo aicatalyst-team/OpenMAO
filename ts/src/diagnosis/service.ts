@@ -16,14 +16,22 @@ export type DiagnosisCandidate = {
 export type Diagnosis = {
   workspace_id: string;
   failure_event_id: string;
-  // Ranked most-load-bearing-first. The first candidate is the suggested root cause.
+  // Ranked source/origin-first, then by counterfactual necessity, then earliest — the first
+  // candidate is the suggested root cause.
   candidates: DiagnosisCandidate[];
+  // True when the failure's causal cone exceeded the screening budget, so only the deepest
+  // `maxAncestors` ancestors were counterfactually screened.
+  truncated: boolean;
   note: string;
 };
 
 const ADVISORY_NOTE =
   "Advisory causal diagnosis (backward-trace + counterfactual screening over the event log). " +
   "Low reliability — a hint for a human to investigate, not a proposal. Gates nothing, applies nothing.";
+
+// Bound the counterfactual screen: it re-traverses the graph once per ancestor (O(ancestors × edges)),
+// so a failure with a very deep causal cone is capped to the deepest `maxAncestors` candidates.
+export const DEFAULT_MAX_DIAGNOSIS_ANCESTORS = 200;
 
 export class DiagnosisServiceError extends Error {}
 
@@ -39,9 +47,14 @@ export class DiagnosisServiceError extends Error {}
  */
 export class DiagnosisService {
   private readonly events: EventStore;
+  private readonly maxAncestors: number;
 
-  constructor(private readonly database: Database) {
+  constructor(
+    private readonly database: Database,
+    options: { maxAncestors?: number } = {},
+  ) {
     this.events = new EventStore(database);
+    this.maxAncestors = options.maxAncestors ?? DEFAULT_MAX_DIAGNOSIS_ANCESTORS;
   }
 
   diagnose(input: { workspace_id: string; failure_event_id: string }): Diagnosis {
@@ -61,7 +74,18 @@ export class DiagnosisService {
       const ancestorSet = ancestors(graph, failureId);
       const fullSize = ancestorSet.size;
 
-      const candidates: DiagnosisCandidate[] = [...ancestorSet].map((id) => {
+      // Bound the per-ancestor counterfactual re-traversal: when the cone is larger than the budget,
+      // screen only the deepest (earliest-seq) ancestors — the likeliest root causes — and flag it.
+      const truncated = fullSize > this.maxAncestors;
+      const screened = truncated
+        ? [...ancestorSet]
+            .sort(
+              (left, right) => (eventById.get(left)?.seq ?? 0) - (eventById.get(right)?.seq ?? 0),
+            )
+            .slice(0, this.maxAncestors)
+        : [...ancestorSet];
+
+      const candidates: DiagnosisCandidate[] = screened.map((id) => {
         const event = eventById.get(id);
         const withoutSize = ancestorsExcluding(incoming, failureId, id).size;
         // Ancestors that were only reachable via this candidate (excluding the candidate itself).
@@ -96,12 +120,19 @@ export class DiagnosisService {
             candidate_count: candidates.length,
             suggested_root_cause: top,
             reliability: "advisory",
+            truncated,
           },
           refs: [failureId, ...candidates.slice(0, 5).map((candidate) => candidate.event_id)],
         }),
       });
 
-      return { workspace_id, failure_event_id: failureId, candidates, note: ADVISORY_NOTE };
+      return {
+        workspace_id,
+        failure_event_id: failureId,
+        candidates,
+        truncated,
+        note: ADVISORY_NOTE,
+      };
     });
   }
 }

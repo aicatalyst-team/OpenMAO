@@ -121,4 +121,47 @@ describe("M3 advisory causal diagnosis", () => {
     const kinds = new EventStore(database).listForWorkspace(workspaceId).map((event) => event.kind);
     expect(kinds).toContain("diagnosis.suggested");
   });
+
+  it("bounds the counterfactual screen to a budget and flags truncation", async () => {
+    const workspaceId = await seedWorkspace();
+    const events = new EventStore(database);
+    const planned = events.append({
+      workspace_id: workspaceId,
+      kind: "work.planned",
+      actor: "spine",
+      payload: EventPayloadSchema.parse({ actor_ref: coordinator, produced_refs: ["brief_alpha"] }),
+    });
+    const handoff = events.append({
+      workspace_id: workspaceId,
+      kind: "handoff.requested",
+      actor: "spine",
+      payload: EventPayloadSchema.parse({ actor_ref: coordinator }),
+    });
+    events.append({
+      workspace_id: workspaceId,
+      kind: "handoff.completed",
+      actor: "spine",
+      payload: EventPayloadSchema.parse({
+        actor_ref: researcher,
+        causal_parent_id: handoff.id,
+        consumed_refs: ["brief_alpha"],
+      }),
+    });
+    const failed = events.append({
+      workspace_id: workspaceId,
+      kind: "work.outcome_submitted",
+      actor: "spine",
+      payload: EventPayloadSchema.parse({ actor_ref: researcher, data: { status: "failed" } }),
+    });
+
+    // Three ancestors, budget of one → screen only the deepest (earliest) and flag truncation.
+    const diagnosis = new DiagnosisService(database, { maxAncestors: 1 }).diagnose({
+      workspace_id: workspaceId,
+      failure_event_id: failed.id,
+    });
+
+    expect(diagnosis.truncated).toBe(true);
+    expect(diagnosis.candidates).toHaveLength(1);
+    expect(diagnosis.candidates[0]?.event_id).toBe(planned.id);
+  });
 });
