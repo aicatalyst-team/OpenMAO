@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { ChiefOfStaffService } from "./chief_of_staff/index.js";
 import { utcNow } from "./contracts/index.js";
+import { DiagnosisService } from "./diagnosis/index.js";
 import { ApprovalService } from "./governance/index.js";
 import { ConsoleTransport, HeartbeatService } from "./heartbeat/index.js";
 import { IngestionService } from "./ingestion/index.js";
@@ -162,7 +163,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | cos init|tick|run|inbox|read <id> [--unread] [--at ts] [--beats n] [--interval s] [--daemon] | cadence list|add --kind <kind> --interval <seconds> | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
+        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | cos init|tick|run|inbox|read <id> [--unread] [--at ts] [--beats n] [--interval s] [--daemon] | cadence list|add --kind <kind> --interval <seconds> | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | diagnose <failure_event_id> | console",
       );
       return 0;
     }
@@ -620,6 +621,22 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       printJson(
         write,
         new WorldModelService(database).rebuild(selectedWorkspace, runId ?? fallbackRunId),
+      );
+      return 0;
+    }
+    if (command === "diagnose") {
+      // Advisory causal diagnosis of a failure event (M3): backward-trace + counterfactual screen.
+      // Gates nothing — a hint for a human, not a proposal.
+      const failureEventId = positions[1];
+      if (!failureEventId) {
+        throw new Error("failure event id is required");
+      }
+      printJson(
+        write,
+        new DiagnosisService(database).diagnose({
+          workspace_id: selectedWorkspace,
+          failure_event_id: failureEventId,
+        }),
       );
       return 0;
     }
