@@ -340,6 +340,37 @@
         "other"
       ]
     },
+    "CollectiveMemorySummary": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "episodic",
+            "procedural",
+            "semantic",
+            "decision"
+          ]
+        },
+        "confidence": {
+          "type": "number"
+        },
+        "corroboration_count": {
+          "type": "integer",
+          "default": 0
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "confidence"
+      ],
+      "additionalProperties": false
+    },
     "Workspace": {
       "type": "object",
       "properties": {
@@ -3046,6 +3077,41 @@
           "items": {
             "type": "string",
             "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+          },
+          "default": []
+        },
+        "collective_memory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "episodic",
+                  "procedural",
+                  "semantic",
+                  "decision"
+                ]
+              },
+              "confidence": {
+                "type": "number"
+              },
+              "corroboration_count": {
+                "type": "integer",
+                "default": 0
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "confidence"
+            ],
+            "additionalProperties": false
           },
           "default": []
         },

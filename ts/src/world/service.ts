@@ -7,13 +7,16 @@ import {
   type WorldModelSnapshot,
   WorldModelSnapshotSchema,
 } from "../contracts/index.js";
+import { parseSourcePromotion } from "../memory/provenance.js";
 import {
   ApprovalStore,
   CapabilityStore,
+  CorroborationStore,
   type Database,
   EventStore,
   GoalStore,
   IngestionRecordStore,
+  MemoryEntryStore,
   OrgChangeProposalStore,
   RunStore,
   TaskEnvelopeStore,
@@ -31,9 +34,11 @@ export class WorldModelServiceError extends Error {}
 export class WorldModelService {
   private readonly approvals: ApprovalStore;
   private readonly capabilities: CapabilityStore;
+  private readonly corroborations: CorroborationStore;
   private readonly events: EventStore;
   private readonly goals: GoalStore;
   private readonly ingestions: IngestionRecordStore;
+  private readonly memoryEntries: MemoryEntryStore;
   private readonly orgChanges: OrgChangeProposalStore;
   private readonly runs: RunStore;
   private readonly snapshots: WorldModelSnapshotStore;
@@ -45,9 +50,11 @@ export class WorldModelService {
   constructor(private readonly database: Database) {
     this.approvals = new ApprovalStore(database);
     this.capabilities = new CapabilityStore(database);
+    this.corroborations = new CorroborationStore(database);
     this.events = new EventStore(database);
     this.goals = new GoalStore(database);
     this.ingestions = new IngestionRecordStore(database);
+    this.memoryEntries = new MemoryEntryStore(database);
     this.orgChanges = new OrgChangeProposalStore(database);
     this.runs = new RunStore(database);
     this.snapshots = new WorldModelSnapshotStore(database);
@@ -128,6 +135,21 @@ export class WorldModelService {
         .filter((seq): seq is number => seq !== null);
       const sourceRunSeq = runId ? Math.max(0, ...runSeqs) : null;
       const generatedAt = workspaceEvents.at(-1)?.timestamp ?? workspace.created_at;
+      const collectiveMemory = this.memoryEntries
+        .listForWorkspace(workspaceId)
+        .filter((entry) => entry.scope === "collective")
+        .map((entry) => {
+          const candidateId = parseSourcePromotion(entry.provenance.note);
+          return {
+            id: entry.id,
+            kind: entry.kind,
+            confidence: entry.confidence,
+            corroboration_count: candidateId
+              ? this.corroborations.countForCandidate(candidateId)
+              : 0,
+          };
+        })
+        .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
       const payload = {
         workspace_id: workspaceId,
         run_id: runId,
@@ -142,6 +164,7 @@ export class WorldModelService {
         recent_ingestions: recentIngestions,
         capability_gaps: capabilityGaps,
         recent_events: recentEvents,
+        collective_memory: collectiveMemory,
         latest_run_status: run?.status ?? null,
         source_workspace_seq: sourceWorkspaceSeq,
         source_run_seq: sourceRunSeq,

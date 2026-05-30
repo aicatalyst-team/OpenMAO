@@ -645,6 +645,15 @@ export const OrgChangeProposalSchema = z
   })
   .strict();
 
+export const CollectiveMemorySummarySchema = z
+  .object({
+    id: CanonicalIdSchema,
+    kind: z.enum(["episodic", "procedural", "semantic", "decision"]),
+    confidence: z.number(),
+    corroboration_count: z.number().int().default(0),
+  })
+  .strict();
+
 export const WorldModelSnapshotSchema = z
   .object({
     id: CanonicalIdSchema,
@@ -661,6 +670,7 @@ export const WorldModelSnapshotSchema = z
     recent_ingestions: z.array(CanonicalIdSchema).default([]),
     capability_gaps: z.array(z.string()).default([]),
     recent_events: z.array(CanonicalIdSchema).default([]),
+    collective_memory: z.array(CollectiveMemorySummarySchema).default([]),
     latest_run_status: RunStatusSchema.nullable().default(null),
     source_workspace_seq: z.number().int().default(0),
     source_run_seq: z.number().int().nullable().default(null),
@@ -716,6 +726,7 @@ export const schemaDefinitions = {
   CapabilityProviderRef: CapabilityProviderRefSchema,
   OrgChangeEvidence: OrgChangeEvidenceSchema,
   OrgChangeSourceSignal: OrgChangeSourceSignalSchema,
+  CollectiveMemorySummary: CollectiveMemorySummarySchema,
   ...canonicalModelSchemas,
 } as const;
 
@@ -763,5 +774,6 @@ export type ModelRequest = z.infer<typeof ModelRequestSchema>;
 export type ModelResponse = z.infer<typeof ModelResponseSchema>;
 export type OrgChangeEvidence = z.infer<typeof OrgChangeEvidenceSchema>;
 export type OrgChangeSourceSignal = z.infer<typeof OrgChangeSourceSignalSchema>;
+export type CollectiveMemorySummary = z.infer<typeof CollectiveMemorySummarySchema>;
 export type OrgChangeProposal = z.infer<typeof OrgChangeProposalSchema>;
 export type WorldModelSnapshot = z.infer<typeof WorldModelSnapshotSchema>;

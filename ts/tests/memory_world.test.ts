@@ -147,6 +147,53 @@ describe("TypeScript memory promotion and world model", () => {
     expect(new RunStore(database).get(run.id)?.status).toBe("running");
   });
 
+  it("surfaces collective memory with corroboration evidence in a rebuildable world model", async () => {
+    const run = await seedRunningRun();
+    const fixture = await loadFixture();
+    const service = new PromotionService(database, {
+      collective_memory_dir: join(tmpRoot, "collective_memory"),
+    });
+    service.writeIndividual(MemoryEntrySchema.parse(fixture.memory_entry));
+    service.writeIndividual(
+      MemoryEntrySchema.parse({
+        ...(fixture.memory_entry as Record<string, unknown>),
+        id: "mem_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        content: "an independent run reached the same conclusion",
+      }),
+    );
+    const candidate = PromotionCandidateSchema.parse({
+      ...(fixture.promotion_candidate as Record<string, unknown>),
+      corroboration_count: 0,
+    });
+    const proposed = service.propose(candidate, {
+      requested_by: "agent_55555555555555555555555555555555",
+      run_id: run.id,
+      approval_id: "approval_11111111111111111111111111111111",
+    });
+    service.recordCorroboration(candidate.id, {
+      source_memory_entry: "mem_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      corroborated_by: "agent_77777777777777777777777777777777",
+      run_id: run.id,
+    });
+    new ApprovalService(database).approve(proposed.approval_id, { workspace_id: run.workspace_id });
+    const collective = service.ratifyAndWriteCollective(candidate.id, {
+      workspace_id: run.workspace_id,
+      approval_id: proposed.approval_id,
+      resolved_at: "2026-05-27T15:20:12Z",
+    });
+
+    const worldService = new WorldModelService(database);
+    const snapshot = worldService.rebuild(run.workspace_id, run.id);
+    const summary = snapshot.collective_memory.find((entry) => entry.id === collective.id);
+    expect(summary).toBeDefined();
+    expect(summary?.corroboration_count).toBe(1);
+
+    // The projection stays rebuildable: deleting and rebuilding reproduces it exactly.
+    new WorldModelSnapshotStore(database).delete(snapshot.id);
+    const rebuilt = worldService.rebuild(run.workspace_id, run.id);
+    expect(rebuilt).toEqual(snapshot);
+  });
+
   it("round-trips artifact and trace metadata", async () => {
     const run = await seedRunningRun();
     await seedWorldInputs(run);
