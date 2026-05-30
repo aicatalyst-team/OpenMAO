@@ -1,5 +1,6 @@
 import type { MemoryEntry } from "../contracts/index.js";
 import { CorroborationStore, type Database, MemoryEntryStore } from "../persistence/index.js";
+import { parseSourcePromotion } from "./provenance.js";
 
 export type MemorySearchFilters = {
   scope?: MemoryEntry["scope"];
@@ -27,8 +28,9 @@ export type MemorySearchResult = {
 };
 
 const DEFAULT_LIMIT = 50;
+// ASCII-alphanumeric, lowercased tokens — deterministic and dependency-free.
+// Non-Latin scripts are out of scope for v0.5.0; a future analyzer/FTS can extend this.
 const TOKEN_PATTERN = /[a-z0-9]+/g;
-const SOURCE_PROMOTION_PREFIX = "source_promotion:";
 
 function uniqueTokens(text: string): Set<string> {
   return new Set(text.toLowerCase().match(TOKEN_PATTERN) ?? []);
@@ -63,7 +65,9 @@ export class MemoryRetrievalService {
 
     const minConfidence = filters.min_confidence ?? 0;
     const limit =
-      filters.limit !== undefined ? Math.max(0, Math.floor(filters.limit)) : DEFAULT_LIMIT;
+      filters.limit === undefined || Number.isNaN(filters.limit)
+        ? DEFAULT_LIMIT
+        : Math.max(0, Math.floor(filters.limit));
 
     const results: MemorySearchResult[] = [];
     for (const entry of this.entries.listForWorkspace(workspaceId)) {
@@ -112,13 +116,11 @@ export class MemoryRetrievalService {
   }
 
   private evidenceFor(entry: MemoryEntry): MemorySearchEvidence {
-    let sourcePromotion: string | null = null;
-    let corroborationCount = 0;
-    const note = entry.provenance.note;
-    if (entry.scope === "collective" && note?.startsWith(SOURCE_PROMOTION_PREFIX)) {
-      sourcePromotion = note.slice(SOURCE_PROMOTION_PREFIX.length);
-      corroborationCount = this.corroborations.countForCandidate(sourcePromotion);
-    }
+    const sourcePromotion =
+      entry.scope === "collective" ? parseSourcePromotion(entry.provenance.note) : null;
+    const corroborationCount = sourcePromotion
+      ? this.corroborations.countForCandidate(sourcePromotion)
+      : 0;
     return {
       confidence: entry.confidence,
       corroboration_count: corroborationCount,

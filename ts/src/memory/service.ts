@@ -28,6 +28,7 @@ import {
   NodeEffectStore,
   PromotionCandidateStore,
 } from "../persistence/index.js";
+import { sourcePromotionNote } from "./provenance.js";
 
 export class PromotionServiceError extends Error {}
 
@@ -402,7 +403,7 @@ export class PromotionService {
         run_id: source.provenance.run_id,
         task_id: source.provenance.task_id,
         source_event_id: source.provenance.source_event_id,
-        note: `source_promotion:${candidate.id}`,
+        note: sourcePromotionNote(candidate.id),
       },
       confidence: Math.min(1, source.confidence + 0.05 * corroborationCount),
       status: "confirmed",

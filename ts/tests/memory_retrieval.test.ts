@@ -194,4 +194,24 @@ describe("evidence-backed memory retrieval", () => {
       source_promotion: null,
     });
   });
+
+  it("treats a malformed source_promotion note as no promotion", () => {
+    saveEntry({
+      id: "mem_e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5",
+      scope: "collective",
+      content: "email cadence matters for replies",
+      provenance: {
+        agent_id: null,
+        role_id: null,
+        task_id: null,
+        run_id: null,
+        source_event_id: null,
+        note: "source_promotion:",
+      },
+    });
+
+    const [result] = new MemoryRetrievalService(database).search(WS, "email");
+    expect(result?.evidence.source_promotion).toBeNull();
+    expect(result?.evidence.corroboration_count).toBe(0);
+  });
 });
