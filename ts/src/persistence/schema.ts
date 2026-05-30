@@ -380,6 +380,26 @@ CREATE TABLE IF NOT EXISTS org_change_proposals (
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
 );
 
+CREATE TABLE IF NOT EXISTS org_change_applications (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  proposal_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+  FOREIGN KEY (proposal_id) REFERENCES org_change_proposals(id)
+);
+
+-- One application per proposal, enforced at the DB level (not just by the derived id).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_org_change_applications_proposal
+  ON org_change_applications (workspace_id, proposal_id);
+
+CREATE TABLE IF NOT EXISTS org_control (
+  workspace_id TEXT PRIMARY KEY,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
+);
+
 CREATE TABLE IF NOT EXISTS active_run_locks (
   workspace_id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL,
@@ -390,9 +410,9 @@ CREATE TABLE IF NOT EXISTS active_run_locks (
 );
 
 INSERT OR IGNORE INTO schema_version (version, applied_at)
-VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 `;
 
 export function initializeSchema(connection: SqliteDatabase): void {

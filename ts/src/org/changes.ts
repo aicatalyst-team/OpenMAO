@@ -2,6 +2,7 @@ import {
   ApprovalPayloadSchema,
   type ApprovalRequest,
   EventPayloadSchema,
+  type OrgChangeApplication,
   type OrgChangeEvidence,
   type OrgChangeProposal,
   OrgChangeProposalSchema,
@@ -19,6 +20,7 @@ import {
   assertNoSensitiveMaterial,
   assertNoSensitiveString,
 } from "../security/sensitive-material.js";
+import { OrgChangeApplyService } from "./apply.js";
 
 type ProposeOrgChangeInput = {
   id: string;
@@ -41,11 +43,16 @@ export class OrgChangeService {
   private readonly approvals: ApprovalStore;
   private readonly events: EventStore;
   private readonly proposals: OrgChangeProposalStore;
+  private readonly applyService: OrgChangeApplyService;
 
-  constructor(private readonly database: Database) {
+  constructor(
+    private readonly database: Database,
+    options: { applyService?: OrgChangeApplyService } = {},
+  ) {
     this.approvals = new ApprovalStore(database);
     this.events = new EventStore(database);
     this.proposals = new OrgChangeProposalStore(database);
+    this.applyService = options.applyService ?? new OrgChangeApplyService(database);
   }
 
   propose(input: ProposeOrgChangeInput): { approval_id: string; proposal: OrgChangeProposal } {
@@ -168,6 +175,32 @@ export class OrgChangeService {
       if (proposal.status !== "approved") {
         throw new OrgChangeServiceError("org change proposal must be approved before applied");
       }
+
+      // M1: when a real applier exists for this change type, apply for real — a reversible,
+      // verified mutation recorded as an OrgChangeApplication, with guardrails — instead of the
+      // marker-only no-op. Change types without an applier keep the honest marker behaviour.
+      if (this.applyService.hasApplier(proposal.change_type)) {
+        this.applyService.apply(proposalId, {
+          workspace_id: input.workspace_id,
+          actor: input.actor,
+          at: input.resolved_at ?? null,
+        });
+        const realApplied = this.proposals.get(proposalId);
+        if (!realApplied) {
+          throw new OrgChangeServiceError(
+            `org change proposal not found after apply: ${proposalId}`,
+          );
+        }
+        return realApplied;
+      }
+
+      // Marker path (change types without a real applier yet): still gate it with the shared apply
+      // guardrails, so a paused / unevidenced / self-applied proposal cannot advance to `applied`
+      // by any route — the kill-switch covers everything.
+      this.applyService.assertApplyAllowed(proposal, {
+        workspace_id: input.workspace_id,
+        actor: input.actor,
+      });
       const applied = this.proposals.setStatus(
         proposal.id,
         "applied",
@@ -187,6 +220,21 @@ export class OrgChangeService {
         idempotency_key: `${applied.id}:applied`,
       });
       return applied;
+    });
+  }
+
+  /**
+   * Reverse a previously-applied org change (M1 reversible apply). Delegates to the apply engine,
+   * which refuses if any target has drifted since it was applied (revert-conflict).
+   */
+  revertApplication(
+    applicationId: string,
+    input: { workspace_id: string; actor: string; resolved_at?: string | null },
+  ): OrgChangeApplication {
+    return this.applyService.revert(applicationId, {
+      workspace_id: input.workspace_id,
+      actor: input.actor,
+      at: input.resolved_at ?? null,
     });
   }
 }

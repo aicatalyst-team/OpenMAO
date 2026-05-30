@@ -2,12 +2,13 @@
 import { ApprovalService } from "./governance/index.js";
 import { IngestionService } from "./ingestion/index.js";
 import { LearningService } from "./learning/index.js";
-import { OrgChangeService } from "./org/index.js";
+import { OrgChangeService, OrgControlService } from "./org/index.js";
 import {
   BoundedWorkEnvelopeStore,
   type Database,
   EventStore,
   IngestionRecordStore,
+  OrgChangeApplicationStore,
   OrgChangeProposalStore,
   RunStore,
   WorkerIdentityStore,
@@ -147,7 +148,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
+        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | org pause|resume|control | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
       );
       return 0;
     }
@@ -420,6 +421,52 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
           actor: "cli_operator",
         }),
       );
+      return 0;
+    }
+    if (command === "learning" && subcommand === "revert") {
+      // Revert by the same proposal id used to apply; the application is resolved internally so the
+      // operator never needs the derived application id.
+      const proposalId = positions[2];
+      if (!proposalId) {
+        throw new Error("proposal id is required");
+      }
+      const application = new OrgChangeApplicationStore(database).getForProposal(
+        selectedWorkspace,
+        proposalId,
+      );
+      if (!application) {
+        throw new Error(`no applied change found for proposal: ${proposalId}`);
+      }
+      printJson(
+        write,
+        new OrgChangeService(database).revertApplication(application.id, {
+          workspace_id: selectedWorkspace,
+          actor: "cli_operator",
+        }),
+      );
+      return 0;
+    }
+    if (command === "org" && subcommand === "pause") {
+      printJson(
+        write,
+        new OrgControlService(database).pauseApply(selectedWorkspace, {
+          actor: "cli_operator",
+          reason: positions[2] ?? null,
+        }),
+      );
+      return 0;
+    }
+    if (command === "org" && subcommand === "resume") {
+      printJson(
+        write,
+        new OrgControlService(database).resumeApply(selectedWorkspace, {
+          actor: "cli_operator",
+        }),
+      );
+      return 0;
+    }
+    if (command === "org" && subcommand === "control") {
+      printJson(write, new OrgControlService(database).get(selectedWorkspace));
       return 0;
     }
     if (command === "approvals" && subcommand === "approve") {
