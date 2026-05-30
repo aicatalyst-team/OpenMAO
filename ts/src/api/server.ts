@@ -8,6 +8,7 @@ import {
 import { ApprovalService } from "../governance/index.js";
 import { IngestionService } from "../ingestion/index.js";
 import { LearningService } from "../learning/index.js";
+import { MemoryRetrievalService, PromotionService } from "../memory/index.js";
 import { OrgChangeService } from "../org/index.js";
 import {
   AgentStore,
@@ -83,6 +84,7 @@ function routePattern(pathname: string): {
   individualMemoryAgentId: string | undefined;
   learningProposalApplyId: string | undefined;
   learningProposalId: string | undefined;
+  promotionCorroborateId: string | undefined;
   runEventsId: string | undefined;
   runId: string | undefined;
   runResumeId: string | undefined;
@@ -104,11 +106,13 @@ function routePattern(pathname: string): {
   const individualMemoryMatch = /^\/memory\/individual\/([^/]+)$/.exec(pathname);
   const learningProposalApplyMatch = /^\/learning\/proposals\/([^/]+)\/apply$/.exec(pathname);
   const learningProposalMatch = /^\/learning\/proposals\/([^/]+)$/.exec(pathname);
+  const promotionCorroborateMatch = /^\/memory\/promotions\/([^/]+)\/corroborate$/.exec(pathname);
   return {
     approvalId: approvalMatch?.[1],
     individualMemoryAgentId: individualMemoryMatch?.[1],
     learningProposalApplyId: learningProposalApplyMatch?.[1],
     learningProposalId: learningProposalMatch?.[1],
+    promotionCorroborateId: promotionCorroborateMatch?.[1],
     runEventsId: runEventsMatch?.[1],
     runId: runMatch?.[1],
     runResumeId: runResumeMatch?.[1],
@@ -732,6 +736,56 @@ export function createServer(options: ServerOptions = {}) {
         );
         return;
       }
+      if (request.method === "GET" && url.pathname === "/memory/search") {
+        const scope = url.searchParams.get("scope");
+        const kind = url.searchParams.get("kind");
+        const owner = url.searchParams.get("owner_id");
+        const minConfidence = url.searchParams.get("min_confidence");
+        const limit = url.searchParams.get("limit");
+        sendJson(
+          response,
+          200,
+          new MemoryRetrievalService(database).search(
+            context.workspaceId,
+            url.searchParams.get("q") ?? url.searchParams.get("query") ?? "",
+            {
+              ...(scope ? { scope: scope as never } : {}),
+              ...(kind ? { kind: kind as never } : {}),
+              ...(minConfidence !== null ? { min_confidence: Number(minConfidence) } : {}),
+              ...(owner ? { owner_id: owner } : {}),
+              ...(limit !== null ? { limit: Number(limit) } : {}),
+            },
+          ),
+        );
+        return;
+      }
+      if (request.method === "POST" && approvalRoute.promotionCorroborateId) {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const body = await readJsonBody(request);
+        const sourceMemoryEntry =
+          typeof body.source_memory_entry === "string" ? body.source_memory_entry : "";
+        const corroboratedBy = typeof body.corroborated_by === "string" ? body.corroborated_by : "";
+        if (!sourceMemoryEntry || !corroboratedBy) {
+          sendJson(response, 400, { error: "missing_corroboration_fields" });
+          return;
+        }
+        sendJson(
+          response,
+          200,
+          new PromotionService(database).recordCorroboration(approvalRoute.promotionCorroborateId, {
+            source_memory_entry: sourceMemoryEntry,
+            corroborated_by: corroboratedBy,
+            run_id: typeof body.run_id === "string" ? body.run_id : null,
+            note: typeof body.note === "string" ? body.note : null,
+            corroboration_id:
+              typeof body.corroboration_id === "string" ? body.corroboration_id : null,
+            ...(typeof body.strength === "number" ? { strength: body.strength } : {}),
+          }),
+        );
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/learning/proposals") {
         sendJson(
           response,
@@ -1014,6 +1068,7 @@ function consoleHtml(): string {
       <button data-view="promotions">Promotions</button>
       <button data-view="learning">Learning</button>
       <button data-view="memory">Memory</button>
+      <button data-view="search">Memory Search</button>
       <button data-view="capabilities">Capabilities</button>
       <button data-view="capabilityCalls">Capability Calls</button>
       <button data-view="capabilityResults">Capability Results</button>
@@ -1027,6 +1082,10 @@ function consoleHtml(): string {
           <div id="view-meta" class="meta">${WORKSPACE_ID}</div>
         </div>
       </div>
+      <div id="search-bar" style="display:none; gap:8px; margin-bottom:12px;">
+        <input id="search-input" type="search" placeholder="Search collective + shared memory…" />
+        <button id="search-run">Search</button>
+      </div>
       <div id="table"></div>
       <pre id="output">{}</pre>
     </section>
@@ -1037,6 +1096,8 @@ function consoleHtml(): string {
     const tokenInput = document.querySelector("#token-input");
     const output = document.querySelector("#output");
     const table = document.querySelector("#table");
+    const searchBar = document.querySelector("#search-bar");
+    const searchInput = document.querySelector("#search-input");
     const viewTitle = document.querySelector("#view-title");
     const viewMeta = document.querySelector("#view-meta");
     let activeView = "world";
@@ -1062,6 +1123,7 @@ function consoleHtml(): string {
     function setActive(view) {
       activeView = view;
       viewTitle.textContent = view[0].toUpperCase() + view.slice(1);
+      searchBar.style.display = view === "search" ? "flex" : "none";
       document.querySelectorAll("[data-view]").forEach((button) => {
         button.setAttribute("aria-pressed", String(button.dataset.view === view));
       });
@@ -1096,6 +1158,16 @@ function consoleHtml(): string {
       table.appendChild(element);
       output.textContent = JSON.stringify(rows, null, 2);
     }
+    async function renderSearch() {
+      const q = searchInput.value.trim();
+      if (!q) { renderJson({ hint: "Enter a query to search collective and shared memory." }); return; }
+      const results = await request("/memory/search?q=" + encodeURIComponent(q));
+      renderRows(results.map((r) => ({
+        id: r.entry.id, scope: r.entry.scope, kind: r.entry.kind,
+        confidence: r.entry.confidence, corroboration_count: r.evidence.corroboration_count,
+        source_promotion: r.evidence.source_promotion, content: r.entry.content
+      })), ["id", "scope", "kind", "confidence", "corroboration_count", "source_promotion", "content"]);
+    }
     function actionButton(label, path, tone) {
       const button = document.createElement("button");
       button.textContent = label;
@@ -1119,7 +1191,7 @@ function consoleHtml(): string {
             actionButton("Reject", "/approvals/" + row.id + "/reject", "danger")
           ]);
         }
-        if (view === "promotions") return renderRows(await request("/memory/promotions"), ["id", "status", "proposed_by", "source_memory_entry"]);
+        if (view === "promotions") return renderRows(await request("/memory/promotions"), ["id", "status", "proposed_by", "source_memory_entry", "corroboration_count"]);
         if (view === "learning") {
           return renderRows(await request("/learning/proposals"), ["id", "status", "change_type", "source_signal", "confidence"], (row) => {
             const actions = [];
@@ -1137,6 +1209,7 @@ function consoleHtml(): string {
           collective: await request("/memory/collective"),
           coordinator: await request("/memory/individual/" + coordinatorAgentId)
         });
+        if (view === "search") return renderSearch();
         if (view === "capabilities") return renderRows(await request("/capabilities"), ["name", "default_permission", "providers"]);
         if (view === "capabilityCalls") return renderRows(await request("/capability-calls"), ["id", "capability_name", "provider", "requested_by", "risk_level"]);
         if (view === "capabilityResults") return renderRows(await request("/capability-results"), ["id", "call_id", "status", "run_id"]);
@@ -1154,6 +1227,8 @@ function consoleHtml(): string {
       const response = await responsePromise;
       renderJson(await response.json());
     }
+    document.querySelector("#search-run").addEventListener("click", () => renderSearch());
+    searchInput.addEventListener("keydown", (event) => { if (event.key === "Enter") renderSearch(); });
     document.querySelectorAll("[data-action]").forEach((button) => {
       button.addEventListener("click", async () => {
         await show(fetch(button.dataset.action, { method: "POST", headers: headers() }));
