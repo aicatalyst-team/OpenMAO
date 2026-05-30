@@ -141,14 +141,18 @@ function actorString(actor: ExternalActorRef): string {
 }
 
 // Wrap a bare actor string into a typed actor ref for M0 causal instrumentation, inferring the kind
-// from the string's shape. The actor_id is what drives the causal graph's sequential edges; the
-// inferred type is best-effort metadata.
+// from a known prefix. The actor_id (the full string) is what drives the causal graph's sequential
+// edges; the inferred type is best-effort metadata, so prefix matching (not substring) is used to
+// avoid mislabeling e.g. "operator:agent-admin" as an agent. Prefer passing a typed ExternalActorRef
+// directly when one is available (see envelope.created).
 function asActorRef(actor: string): ExternalActorRef {
-  const actorType = actor.startsWith("worker:")
+  const hasPrefix = (kind: string): boolean =>
+    actor.startsWith(`${kind}:`) || actor.startsWith(`${kind}_`);
+  const actorType = hasPrefix("worker")
     ? "worker"
-    : actor.includes("agent")
+    : hasPrefix("agent")
       ? "agent"
-      : actor.includes("operator")
+      : hasPrefix("operator")
         ? "operator"
         : "system";
   return { actor_type: actorType, actor_id: actor, display_name: null };
@@ -375,6 +379,10 @@ export class WorkService {
             notes: input.notes ?? null,
           },
           refs: [updated.id],
+          // A rejected review drives the work item to `failed` — instrument it so a reviewer-caused
+          // failure is diagnosable and traces back to the work item's creation.
+          actor_ref: asActorRef(input.actor),
+          consumed_refs: [updated.id],
         }),
         idempotency_key: input.idempotency_key ?? `work:${updated.id}:review:${input.decision}`,
       });
@@ -460,6 +468,13 @@ export class WorkService {
             allowed_capabilities: saved.allowed_capabilities,
           },
           refs: [saved.id, saved.work_item_id, saved.worker_id],
+          // issued_by is already a typed actor ref — no inference needed. The envelope CONSUMES the
+          // work item and PRODUCES the envelope id that the worker's outcome later consumes, so a
+          // failed outcome traces back through the envelope (its bounded authority + input) to the
+          // work item's creation.
+          actor_ref: saved.issued_by,
+          consumed_refs: [saved.work_item_id],
+          produced_refs: [saved.id],
         }),
         idempotency_key: input.idempotency_key ?? `work:${saved.work_item_id}:envelope:${saved.id}`,
       });
