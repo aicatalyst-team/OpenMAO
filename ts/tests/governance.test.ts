@@ -17,6 +17,7 @@ import {
   CapabilityResultSchema,
   CapabilitySchema,
   NodeEffectSchema,
+  OrganizationSchema,
   type Run,
   RunSchema,
   TaskEnvelopeSchema,
@@ -32,6 +33,7 @@ import {
   Database,
   EventStore,
   NodeEffectStore,
+  OrganizationStore,
   RunStore,
   TaskEnvelopeStore,
   WorkerIdentityStore,
@@ -844,6 +846,90 @@ describe("TypeScript governance and capabilities", () => {
     expect(invocation.decision.outcome).toBe("block");
     expect(invocation.decision.reason).toContain("credential handle");
     expect(invocation.result?.status).toBe("blocked");
+    expect(provider.executedCallIds).toEqual([]);
+  });
+
+  function enabledSideEffectCapability(workspaceId: string) {
+    return CapabilitySchema.parse({
+      name: "mock.side_effect.record",
+      workspace_id: workspaceId,
+      description: "Enabled side effect for autonomy-dial testing.",
+      tool_name: "mock.side_effect",
+      canonical_input_schema: {
+        type: "object",
+        required: ["message"],
+        properties: { message: { type: "string" } },
+      },
+      canonical_output_schema: {
+        type: "object",
+        required: ["provider", "effect", "handle"],
+        properties: {
+          provider: { type: "string" },
+          effect: { type: "string" },
+          handle: { type: "string" },
+        },
+      },
+      providers: ["mock.side_effect"],
+      side_effecting: true,
+      credential_handle_required: true,
+      default_permission: "enabled",
+    });
+  }
+
+  function seedOrgWithAutonomy(workspaceId: string, level: "advisory" | "supervised" | "bounded") {
+    new OrganizationStore(database).save(
+      OrganizationSchema.parse({
+        id: "org_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        workspace_id: workspaceId,
+        name: "Dial Org",
+        mission: "Exercise the autonomy dial on the gateway path.",
+        autonomy_level: level,
+      }),
+    );
+  }
+
+  it("applies the autonomy dial on the external-worker gateway: bounded allows a side-effecting low-risk call", async () => {
+    const run = await seedRunningRun({
+      to_agent: "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      allowed_capabilities: ["mock.side_effect.record"],
+    });
+    const worker = await seedWorker(run.workspace_id);
+    new CapabilityStore(database).save(enabledSideEffectCapability(run.workspace_id));
+    seedOrgWithAutonomy(run.workspace_id, "bounded");
+    const provider = new MockSideEffectProvider({ cred_mock_side_effect: "secret" });
+    const service = new CapabilityRegistryService(
+      database,
+      new GovernanceService(database, await orgRegistry()),
+      [provider],
+    );
+    const call = await workerSideEffectCall(run, worker.id, { risk_level: "low" });
+
+    const invocation = service.invoke(call);
+
+    expect(invocation.decision.outcome).toBe("allow");
+    expect(invocation.result?.status).toBe("ok");
+    expect(provider.executedCallIds).toEqual([call.id]);
+  });
+
+  it("applies the autonomy dial on the external-worker gateway: supervised gates the same call", async () => {
+    const run = await seedRunningRun({
+      to_agent: "worker_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      allowed_capabilities: ["mock.side_effect.record"],
+    });
+    const worker = await seedWorker(run.workspace_id);
+    new CapabilityStore(database).save(enabledSideEffectCapability(run.workspace_id));
+    seedOrgWithAutonomy(run.workspace_id, "supervised");
+    const provider = new MockSideEffectProvider({ cred_mock_side_effect: "secret" });
+    const service = new CapabilityRegistryService(
+      database,
+      new GovernanceService(database, await orgRegistry()),
+      [provider],
+    );
+    const call = await workerSideEffectCall(run, worker.id, { risk_level: "low" });
+
+    const invocation = service.invoke(call);
+
+    expect(invocation.decision.outcome).toBe("require_approval");
     expect(provider.executedCallIds).toEqual([]);
   });
 });

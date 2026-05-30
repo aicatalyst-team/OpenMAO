@@ -102,7 +102,9 @@ export const OrganizationSchema = z
     values: z.array(z.string()).default([]),
     goals: z.array(z.string()).default([]),
     policies: z.array(z.string()).default([]),
-    autonomy_level: z.enum(["advisory", "supervised", "bounded"]).default("supervised"),
+    // New/unproven organizations start at the tightest level and earn wider autonomy.
+    // The local demo opts into `supervised` explicitly; everything else starts advisory.
+    autonomy_level: z.enum(["advisory", "supervised", "bounded"]).default("advisory"),
     config_version: z.string().default("0.1"),
   })
   .strict();
@@ -309,6 +311,9 @@ export const CapabilitySchema = z
     canonical_output_schema: recordSchema,
     providers: z.array(z.string()).default([]),
     side_effecting: z.boolean().default(false),
+    // Authoritative baseline risk of the capability. The governance dial takes the
+    // higher of this and the call's declared risk, so a caller cannot under-report.
+    risk_level: z.enum(["low", "medium", "high"]).default("low"),
     credential_handle_required: z.boolean().default(false),
     default_permission: z
       .enum(["enabled", "approval_required", "disabled"])

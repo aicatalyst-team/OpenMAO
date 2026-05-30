@@ -438,7 +438,7 @@
             "supervised",
             "bounded"
           ],
-          "default": "supervised"
+          "default": "advisory"
         },
         "config_version": {
           "type": "string",
@@ -1460,6 +1460,15 @@
         "side_effecting": {
           "type": "boolean",
           "default": false
+        },
+        "risk_level": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "default": "low"
         },
         "credential_handle_required": {
           "type": "boolean",
