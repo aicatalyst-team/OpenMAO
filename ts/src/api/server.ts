@@ -34,7 +34,7 @@ import {
 } from "../persistence/index.js";
 import { createApprovalServiceWithApplications } from "../runtime/approvals.js";
 import {
-  createLocalCapabilityRegistry,
+  createConfiguredCapabilityRegistry,
   materializeRejectedCapabilityApproval,
 } from "../runtime/capabilities.js";
 import { openLocalDatabase } from "../runtime/local.js";
@@ -285,7 +285,7 @@ export function createServer(options: ServerOptions = {}) {
         if (!requireDemoWorkspace(response, context.workspaceId)) {
           return;
         }
-        sendJson(response, 200, spine.startDemo());
+        sendJson(response, 200, await spine.startDemo());
         return;
       }
       if (request.method === "POST" && url.pathname === "/runs/demo/approve") {
@@ -384,7 +384,7 @@ export function createServer(options: ServerOptions = {}) {
         if (!requireDemoWorkspace(response, context.workspaceId)) {
           return;
         }
-        sendJson(response, 200, runReferenceWorkerDemo(database));
+        sendJson(response, 200, await runReferenceWorkerDemo(database));
         return;
       }
       if (request.method === "POST" && url.pathname === "/workers/reference-demo/approve") {
@@ -394,7 +394,7 @@ export function createServer(options: ServerOptions = {}) {
         if (!requireDemoWorkspace(response, context.workspaceId)) {
           return;
         }
-        sendJson(response, 200, approveReferenceWorkerDemo(database));
+        sendJson(response, 200, await approveReferenceWorkerDemo(database));
         return;
       }
       if (request.method === "GET" && url.pathname === "/ingestion") {
@@ -492,7 +492,7 @@ export function createServer(options: ServerOptions = {}) {
         sendJson(
           response,
           200,
-          spine.resumeRun(approvalRoute.runResumeId, { actor: context.actor }),
+          await spine.resumeRun(approvalRoute.runResumeId, { actor: context.actor }),
         );
         return;
       }
@@ -869,7 +869,7 @@ export function createServer(options: ServerOptions = {}) {
             response,
             200,
             rejected.payload.target_type === "capability_call"
-              ? materializeRejectedCapabilityApproval(database, rejected)
+              ? await materializeRejectedCapabilityApproval(database, rejected)
               : rejected,
           );
         } else if (approvalRoute.approvalId === PROMOTION_APPROVAL_ID) {
@@ -888,7 +888,7 @@ export function createServer(options: ServerOptions = {}) {
           sendJson(
             response,
             200,
-            spine.resumeApprovedCapability(approvalRoute.approvalId, {
+            await spine.resumeApprovedCapability(approvalRoute.approvalId, {
               actor: context.actor,
               workspace_id: context.workspaceId,
             }),
@@ -897,7 +897,7 @@ export function createServer(options: ServerOptions = {}) {
           approval.payload.target_type === "capability_call" &&
           approval.run_id === REFERENCE_RUN_ID
         ) {
-          sendJson(response, 200, approveReferenceWorkerDemo(database));
+          sendJson(response, 200, await approveReferenceWorkerDemo(database));
         } else if (approval.payload.target_type === "capability_call") {
           new ApprovalService(database).approve(approvalRoute.approvalId, {
             workspace_id: context.workspaceId,
@@ -906,9 +906,12 @@ export function createServer(options: ServerOptions = {}) {
           sendJson(
             response,
             200,
-            createLocalCapabilityRegistry(database).resumeApprovedCall(approvalRoute.approvalId, {
-              workspace_id: context.workspaceId,
-            }),
+            await createConfiguredCapabilityRegistry(database).resumeApprovedCall(
+              approvalRoute.approvalId,
+              {
+                workspace_id: context.workspaceId,
+              },
+            ),
           );
         } else {
           sendJson(

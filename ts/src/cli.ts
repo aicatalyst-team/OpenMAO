@@ -18,7 +18,7 @@ import {
 } from "./persistence/index.js";
 import { createApprovalServiceWithApplications } from "./runtime/approvals.js";
 import {
-  createLocalCapabilityRegistry,
+  createConfiguredCapabilityRegistry,
   materializeRejectedCapabilityApproval,
 } from "./runtime/capabilities.js";
 import { openLocalDatabase } from "./runtime/local.js";
@@ -161,7 +161,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
     }
     if (command === "demo" || (command === "run" && subcommand === "demo")) {
       requireDefaultWorkspace(selectedWorkspace);
-      printJson(write, spine.startDemo());
+      printJson(write, await spine.startDemo());
       return 0;
     }
     if (command === "demo-approve") {
@@ -172,7 +172,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
     if (command === "run" && subcommand === "resume") {
       requireDefaultWorkspace(selectedWorkspace);
       const runId = positions[2] ?? RUN_ID;
-      printJson(write, spine.resumeRun(runId));
+      printJson(write, await spine.resumeRun(runId));
       return 0;
     }
     if (command === "approvals" && subcommand === "list") {
@@ -186,12 +186,12 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
     }
     if (command === "worker" && subcommand === "demo") {
       requireDefaultWorkspace(selectedWorkspace);
-      printJson(write, runReferenceWorkerDemo(database));
+      printJson(write, await runReferenceWorkerDemo(database));
       return 0;
     }
     if (command === "worker" && subcommand === "demo-approve") {
       requireDefaultWorkspace(selectedWorkspace);
-      printJson(write, approveReferenceWorkerDemo(database));
+      printJson(write, await approveReferenceWorkerDemo(database));
       return 0;
     }
     if (command === "workers" && subcommand === "register") {
@@ -438,13 +438,13 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       if (approval?.payload.target_type === "capability_call" && approval.run_id === RUN_ID) {
         printJson(
           write,
-          spine.resumeApprovedCapability(approvalId, { workspace_id: selectedWorkspace }),
+          await spine.resumeApprovedCapability(approvalId, { workspace_id: selectedWorkspace }),
         );
       } else if (
         approval?.payload.target_type === "capability_call" &&
         approval.run_id === REFERENCE_RUN_ID
       ) {
-        printJson(write, approveReferenceWorkerDemo(database));
+        printJson(write, await approveReferenceWorkerDemo(database));
       } else if (approval?.payload.target_type === "capability_call") {
         new ApprovalService(database).approve(approvalId, {
           workspace_id: selectedWorkspace,
@@ -452,7 +452,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
         });
         printJson(
           write,
-          createLocalCapabilityRegistry(database).resumeApprovedCall(approvalId, {
+          await createConfiguredCapabilityRegistry(database).resumeApprovedCall(approvalId, {
             workspace_id: selectedWorkspace,
           }),
         );
@@ -485,7 +485,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       printJson(
         write,
         rejected.payload.target_type === "capability_call"
-          ? materializeRejectedCapabilityApproval(database, rejected)
+          ? await materializeRejectedCapabilityApproval(database, rejected)
           : rejected,
       );
       return 0;

@@ -148,7 +148,7 @@ export class SpineService {
     return WORKSPACE_ID;
   }
 
-  startDemo(): SpineRunResult {
+  async startDemo(): Promise<SpineRunResult> {
     const registry = this.persistDefaultOrg();
     const existing = this.runs.get(RUN_ID);
     if (existing && ["suspended_approval", "completed", "failed"].includes(existing.status)) {
@@ -179,10 +179,10 @@ export class SpineService {
       return this.resultFromRun(run);
     }
 
-    return this.runUntilPromotionApproval(run, registry);
+    return await this.runUntilPromotionApproval(run, registry);
   }
 
-  resumeRun(runId: string, input: { actor?: string | null } = {}): SpineRunResult {
+  async resumeRun(runId: string, input: { actor?: string | null } = {}): Promise<SpineRunResult> {
     if (runId !== RUN_ID) {
       throw new SpineServiceError(`unknown v0 demo run: ${runId}`);
     }
@@ -190,7 +190,7 @@ export class SpineService {
     const registry = this.persistDefaultOrg();
     let run = this.runs.get(runId);
     if (!run || run.status === "queued") {
-      return this.startDemo();
+      return await this.startDemo();
     }
     if (run.status === "completed") {
       return this.resultFromRun(run);
@@ -222,7 +222,7 @@ export class SpineService {
     }
 
     if (run.status === "running") {
-      return this.resumeRunningRun(run, registry);
+      return await this.resumeRunningRun(run, registry);
     }
 
     const suspendedApprovalId = run.suspended_approval_id;
@@ -235,7 +235,7 @@ export class SpineService {
     }
     if (suspendedApproval.payload.target_type === "capability_call") {
       if (suspendedApproval.status === "approved") {
-        return this.resumeApprovedCapability(suspendedApproval.id, {
+        return await this.resumeApprovedCapability(suspendedApproval.id, {
           actor: input.actor ?? null,
           workspace_id: run.workspace_id,
         });
@@ -269,10 +269,10 @@ export class SpineService {
     return this.resultFromRun(run);
   }
 
-  resumeApprovedCapability(
+  async resumeApprovedCapability(
     approvalId: string,
     input: { actor?: string | null; workspace_id: string },
-  ): SpineRunResult {
+  ): Promise<SpineRunResult> {
     let approval = new ApprovalService(this.database).approvals.get(approvalId);
     if (!approval) {
       throw new SpineServiceError(`approval request not found: ${approvalId}`);
@@ -321,7 +321,7 @@ export class SpineService {
       return this.resultFromRun(run);
     }
 
-    const invocation = new CapabilityRegistryService(
+    const invocation = await new CapabilityRegistryService(
       this.database,
       new GovernanceService(this.database, registry),
       [new MockProvider()],
@@ -342,7 +342,7 @@ export class SpineService {
       );
     }
     run = this.runs.get(run.id) ?? run;
-    return this.runUntilPromotionApproval(run, registry, "capability_called");
+    return await this.runUntilPromotionApproval(run, registry, "capability_called");
   }
 
   resumeDemo(approvalId?: string | null, input: { actor?: string | null } = {}): SpineRunResult {
@@ -399,23 +399,23 @@ export class SpineService {
     return { ...this.resultFromRun(completed), collective_memory_id: collective.id };
   }
 
-  private resumeRunningRun(run: Run, registry: OrgRegistry): SpineRunResult {
+  private async resumeRunningRun(run: Run, registry: OrgRegistry): Promise<SpineRunResult> {
     const checkpoint = this.checkpoints.latest(run.workspace_id, run.id);
     if (!checkpoint) {
-      return this.runUntilPromotionApproval(run, registry);
+      return await this.runUntilPromotionApproval(run, registry);
     }
 
     const checkpointed = this.runs.setStatus(run.id, "running", {
       active_node: checkpoint.node,
     });
-    return this.runUntilPromotionApproval(checkpointed, registry, checkpoint.node);
+    return await this.runUntilPromotionApproval(checkpointed, registry, checkpoint.node);
   }
 
-  private runUntilPromotionApproval(
+  private async runUntilPromotionApproval(
     run: Run,
     registry: OrgRegistry,
     resumeFloorNode: string | null = null,
-  ): SpineRunResult {
+  ): Promise<SpineRunResult> {
     const workItem = WorkItemSchema.parse(defaultWorkItem());
     this.recordNode(
       run,
@@ -493,7 +493,7 @@ export class SpineService {
       resumeFloorNode,
     );
 
-    const capabilityInvocation = new CapabilityRegistryService(this.database, governance, [
+    const capabilityInvocation = await new CapabilityRegistryService(this.database, governance, [
       new MockProvider(),
     ]).invoke(this.demoCapabilityCall());
     if (!capabilityInvocation.result) {

@@ -315,6 +315,15 @@ export const CapabilitySchema = z
     // higher of this and the call's declared risk, so a caller cannot under-report.
     risk_level: z.enum(["low", "medium", "high"]).default("low"),
     credential_handle_required: z.boolean().default(false),
+    // Constrained to a cred_* shape with a field-level regex so the constraint
+    // is emitted into the portable canonical JSON Schema (a .refine() would be
+    // runtime-only and diverge from the published schema). The persistence layer
+    // additionally screens for secret-shaped material.
+    credential_handle: z
+      .string()
+      .regex(/^cred_[A-Za-z0-9_.:-]+$/, "credential_handle must be a cred_* handle")
+      .nullable()
+      .default(null),
     default_permission: z
       .enum(["enabled", "approval_required", "disabled"])
       .default("approval_required"),
@@ -344,7 +353,11 @@ export const CapabilityCallSchema = z
     requested_by: z.string(),
     external_actor: ExternalActorRefSchema.nullable().default(null),
     task_id: CanonicalIdSchema,
-    credential_handle: z.string().nullable().default(null),
+    credential_handle: z
+      .string()
+      .regex(/^cred_[A-Za-z0-9_.:-]+$/, "credential_handle must be a cred_* handle")
+      .nullable()
+      .default(null),
     side_effecting: z.boolean().default(false),
     audit_payload: recordSchema.default({}),
     risk_level: z.enum(["low", "medium", "high"]).default("low"),

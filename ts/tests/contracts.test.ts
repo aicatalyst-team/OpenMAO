@@ -144,9 +144,15 @@ describe("canonical TypeScript contracts", () => {
     expect(capabilityProperties).toHaveProperty("canonical_input_schema");
     expect(capabilityProperties).toHaveProperty("canonical_output_schema");
     expect(capabilityProperties).toHaveProperty("credential_handle_required");
+    expect(capabilityProperties).toHaveProperty("credential_handle");
     expect(capabilityProperties).toHaveProperty("side_effecting");
     expect(capabilityProperties).not.toHaveProperty("input_schema");
     expect(capabilityProperties).not.toHaveProperty("output_schema");
+
+    // The cred_* constraint must reach the portable schema for both the
+    // capability declaration and the call (not only be enforced at runtime).
+    expect(JSON.stringify(defs.Capability)).toContain("^cred_[A-Za-z0-9_.:-]+$");
+    expect(JSON.stringify(defs.CapabilityCall)).toContain("^cred_[A-Za-z0-9_.:-]+$");
   });
 
   it("requires external-worker records to carry identity and idempotency", () => {

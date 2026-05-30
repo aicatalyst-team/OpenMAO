@@ -33,11 +33,11 @@ afterEach(() => {
 });
 
 describe("reference external worker", () => {
-  it("suspends for approval, resumes idempotently, and projects into the world model", () => {
-    const suspended = runReferenceWorkerDemo(database);
-    const replayedSuspension = runReferenceWorkerDemo(database);
-    const approved = approveReferenceWorkerDemo(database);
-    const replayedApproval = approveReferenceWorkerDemo(database);
+  it("suspends for approval, resumes idempotently, and projects into the world model", async () => {
+    const suspended = await runReferenceWorkerDemo(database);
+    const replayedSuspension = await runReferenceWorkerDemo(database);
+    const approved = await approveReferenceWorkerDemo(database);
+    const replayedApproval = await approveReferenceWorkerDemo(database);
     const events = new EventStore(database).listForWorkspace(approved.workspace_id);
     const work = new WorkItemStore(database).get(REFERENCE_WORK_ID);
     const world = new WorldModelService(database).rebuild(approved.workspace_id, REFERENCE_RUN_ID);

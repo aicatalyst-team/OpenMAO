@@ -47,17 +47,21 @@ type ReferenceWorkerContext = {
   registry: ReturnType<typeof createLocalCapabilityRegistry>;
 };
 
-export function runReferenceWorkerDemo(database: Database): ReferenceWorkerDemoResult {
+export async function runReferenceWorkerDemo(
+  database: Database,
+): Promise<ReferenceWorkerDemoResult> {
   const context = prepareReferenceWorkerDemo(database);
-  const invocation = invokeReferenceCapability(context);
+  const invocation = await invokeReferenceCapability(context);
   if (invocation.result?.status === "ok") {
     return finalizeReferenceWorkerDemo(database, context, invocation);
   }
   return referenceResult(database, context, invocation);
 }
 
-export function approveReferenceWorkerDemo(database: Database): ReferenceWorkerDemoResult {
-  const started = runReferenceWorkerDemo(database);
+export async function approveReferenceWorkerDemo(
+  database: Database,
+): Promise<ReferenceWorkerDemoResult> {
+  const started = await runReferenceWorkerDemo(database);
   if (started.capability_result_id) {
     return started;
   }
@@ -68,7 +72,7 @@ export function approveReferenceWorkerDemo(database: Database): ReferenceWorkerD
     actor: "reference_worker_demo",
   });
   const context = prepareReferenceWorkerDemo(database);
-  const invocation = context.registry.resumeApprovedCall(approvalId, {
+  const invocation = await context.registry.resumeApprovedCall(approvalId, {
     workspace_id: WORKSPACE_ID,
   });
   if (invocation.result?.status !== "ok") {
@@ -108,6 +112,7 @@ function prepareReferenceWorkerDemo(database: Database): ReferenceWorkerContext 
       providers: ["mock.side_effect"],
       side_effecting: true,
       credential_handle_required: true,
+      credential_handle: REFERENCE_CREDENTIAL_HANDLE,
       default_permission: "approval_required",
     }),
   );
@@ -181,7 +186,7 @@ function prepareReferenceWorkerDemo(database: Database): ReferenceWorkerContext 
   };
 }
 
-function invokeReferenceCapability(context: ReferenceWorkerContext): CapabilityInvocation {
+function invokeReferenceCapability(context: ReferenceWorkerContext): Promise<CapabilityInvocation> {
   return context.registry.invoke(
     CapabilityCallSchema.parse({
       id: REFERENCE_CAPABILITY_CALL_ID,

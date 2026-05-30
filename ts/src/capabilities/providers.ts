@@ -4,10 +4,19 @@ import {
   CapabilityResultSchema,
   newId,
 } from "../contracts/index.js";
+import {
+  type CredentialBroker,
+  isCredentialBroker,
+  StaticCredentialBroker,
+} from "../security/credential-broker.js";
 
 export type CapabilityProvider = {
   name: string;
-  execute(call: CapabilityCall): CapabilityResult;
+  // Providers that perform real external side effects declare this so the
+  // gateway can require the side-effect/approval gate even if a capability is
+  // misregistered as non-side-effecting.
+  sideEffecting?: boolean;
+  execute(call: CapabilityCall): CapabilityResult | Promise<CapabilityResult>;
 };
 
 export class MockProvider implements CapabilityProvider {
@@ -37,13 +46,25 @@ export class MockProvider implements CapabilityProvider {
 
 export class MockSideEffectProvider implements CapabilityProvider {
   readonly name = "mock.side_effect";
+  readonly sideEffecting = true;
   readonly executedCallIds: string[] = [];
+  private readonly broker: CredentialBroker;
 
-  constructor(private readonly credentialHandles: Record<string, string> = {}) {}
+  constructor(credentials: CredentialBroker | Record<string, string> = {}) {
+    this.broker = isCredentialBroker(credentials)
+      ? credentials
+      : new StaticCredentialBroker(credentials);
+  }
 
-  execute(call: CapabilityCall): CapabilityResult {
+  async execute(call: CapabilityCall): Promise<CapabilityResult> {
     const handle = call.credential_handle;
-    if (!handle || !Object.hasOwn(this.credentialHandles, handle)) {
+    if (!handle) {
+      throw new Error("mock side-effect requires a credential handle");
+    }
+    // Resolve the secret through the broker to prove the credential is
+    // available, but never emit it: only the non-secret handle leaves here.
+    const secret = await this.broker.resolve(handle);
+    if (!secret) {
       throw new Error("mock side-effect credential handle is not available");
     }
 

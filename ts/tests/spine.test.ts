@@ -64,9 +64,9 @@ afterEach(() => {
 });
 
 describe("TypeScript demo spine", () => {
-  it("runs to durable approval suspension idempotently", () => {
-    const result = service.startDemo();
-    const replayed = service.startDemo();
+  it("runs to durable approval suspension idempotently", async () => {
+    const result = await service.startDemo();
+    const replayed = await service.startDemo();
     const run = new RunStore(database).get(RUN_ID);
     const events = new EventStore(database).listForRun(WORKSPACE_ID, RUN_ID);
     const eventKinds = events.map((event) => event.kind);
@@ -100,8 +100,8 @@ describe("TypeScript demo spine", () => {
     expect(checkpoint?.run_status).toBe("suspended_approval");
   });
 
-  it("approves, resumes, writes collective memory, and completes once", () => {
-    const suspended = service.startDemo();
+  it("approves, resumes, writes collective memory, and completes once", async () => {
+    const suspended = await service.startDemo();
 
     const completed = service.resumeDemo();
     const replayed = service.resumeDemo();
@@ -149,7 +149,7 @@ describe("TypeScript demo spine", () => {
     expect(checkpoint?.run_status).toBe("completed");
   });
 
-  it("isolates default side-effect directories per custom database path", () => {
+  it("isolates default side-effect directories per custom database path", async () => {
     const first = new Database(join(tmpRoot, "first.sqlite3"));
     const second = new Database(join(tmpRoot, "second.sqlite3"));
     first.initialize();
@@ -158,9 +158,9 @@ describe("TypeScript demo spine", () => {
       const firstService = new SpineService(first);
       const secondService = new SpineService(second);
 
-      firstService.startDemo();
+      await firstService.startDemo();
       firstService.resumeDemo();
-      secondService.startDemo();
+      await secondService.startDemo();
       secondService.resumeDemo();
 
       expect(
@@ -192,7 +192,7 @@ describe("TypeScript demo spine", () => {
     }
   });
 
-  it("resumes a running demo checkpoint to the next approval boundary", () => {
+  it("resumes a running demo checkpoint to the next approval boundary", async () => {
     service.initDemoWorkspace();
     new RunStore(database).create(
       RunSchema.parse({
@@ -206,8 +206,8 @@ describe("TypeScript demo spine", () => {
       }),
     );
 
-    const resumed = service.resumeRun(RUN_ID);
-    const replayed = service.resumeRun(RUN_ID);
+    const resumed = await service.resumeRun(RUN_ID);
+    const replayed = await service.resumeRun(RUN_ID);
     const events = new EventStore(database).listForRun(WORKSPACE_ID, RUN_ID);
     const approvalEvents = events.filter((event) => event.kind === "approval.requested");
 
@@ -217,7 +217,7 @@ describe("TypeScript demo spine", () => {
     expect(approvalEvents).toHaveLength(1);
   });
 
-  it("does not checkpoint backward when resuming from a running checkpoint", () => {
+  it("does not checkpoint backward when resuming from a running checkpoint", async () => {
     service.initDemoWorkspace();
     const runStore = new RunStore(database);
     const run = runStore.create(
@@ -273,7 +273,7 @@ describe("TypeScript demo spine", () => {
       created_at: "2026-05-27T15:20:03Z",
     });
 
-    const resumed = service.resumeRun(RUN_ID);
+    const resumed = await service.resumeRun(RUN_ID);
     const checkpoints = new CheckpointStore(database).listForRun(WORKSPACE_ID, RUN_ID);
     const nodesAfterSeed = checkpoints.slice(1).map((checkpoint) => checkpoint.node);
 
@@ -301,8 +301,8 @@ describe("TypeScript demo spine", () => {
     ]);
   });
 
-  it("can resume after an approval was applied outside the spine", () => {
-    service.startDemo();
+  it("can resume after an approval was applied outside the spine", async () => {
+    await service.startDemo();
     new ApprovalService(database).approve(PROMOTION_APPROVAL_ID, { workspace_id: WORKSPACE_ID });
     const running = new RunStore(database).get(RUN_ID);
 
@@ -312,7 +312,7 @@ describe("TypeScript demo spine", () => {
     expect(completed.status).toBe("completed");
   });
 
-  it("continues approved capability resume to the next approval boundary", () => {
+  it("continues approved capability resume to the next approval boundary", async () => {
     new WorkspaceStore(database).save(
       WorkspaceSchema.parse({
         id: WORKSPACE_ID,
@@ -341,12 +341,12 @@ describe("TypeScript demo spine", () => {
       }),
     );
 
-    const suspended = service.startDemo();
+    const suspended = await service.startDemo();
     const capabilityApprovalId = `approval_${CAPABILITY_CALL_ID.split("_", 2)[1]}`;
-    const resumed = service.resumeApprovedCapability(capabilityApprovalId, {
+    const resumed = await service.resumeApprovedCapability(capabilityApprovalId, {
       workspace_id: WORKSPACE_ID,
     });
-    const replayed = service.resumeApprovedCapability(capabilityApprovalId, {
+    const replayed = await service.resumeApprovedCapability(capabilityApprovalId, {
       workspace_id: WORKSPACE_ID,
     });
     const events = new EventStore(database).listForRun(WORKSPACE_ID, RUN_ID);
@@ -373,7 +373,7 @@ describe("TypeScript demo spine", () => {
     expect(nodesAfterApprovalResolution).not.toContain("work_created");
   });
 
-  it("refuses capability approval resume outside the selected workspace", () => {
+  it("refuses capability approval resume outside the selected workspace", async () => {
     service.initDemoWorkspace();
     new RunStore(database).create(
       RunSchema.parse({
@@ -401,15 +401,15 @@ describe("TypeScript demo spine", () => {
       on_reject: "fail_run",
     });
 
-    expect(() =>
+    await expect(
       service.resumeApprovedCapability(approval.id, {
         workspace_id: "ws_22222222222222222222222222222222",
       }),
-    ).toThrow("approval does not belong to workspace");
+    ).rejects.toThrow("approval does not belong to workspace");
   });
 
-  it("records failed terminal audit evidence when approval is rejected", () => {
-    service.startDemo();
+  it("records failed terminal audit evidence when approval is rejected", async () => {
+    await service.startDemo();
 
     new ApprovalService(database).reject(PROMOTION_APPROVAL_ID, { workspace_id: WORKSPACE_ID });
     const run = new RunStore(database).get(RUN_ID);
@@ -428,8 +428,8 @@ describe("TypeScript demo spine", () => {
     expect(checkpoint?.run_status).toBe("failed");
   });
 
-  it("feeds the world model projection", () => {
-    service.startDemo();
+  it("feeds the world model projection", async () => {
+    await service.startDemo();
     const suspended = new WorldModelService(database).rebuild(WORKSPACE_ID, RUN_ID);
     service.resumeDemo();
     const completed = new WorldModelService(database).rebuild(WORKSPACE_ID, RUN_ID);

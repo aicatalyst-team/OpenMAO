@@ -172,6 +172,13 @@ Approval is durable state, not an in-memory callback.
 Approval-required capabilities suspend before provider execution. Resume reloads the persisted
 `CapabilityCall` and executes it once through the node-effect/idempotency protocol.
 
+Real providers resolve credentials through a broker: a capability declares a non-secret `cred_*`
+handle, the gateway requires a call to use exactly that handle, and the broker resolves it to a
+secret inside provider code only — never into a call, result, event, trace, or log. Provider
+execution is awaited outside the database transaction, so a network provider cannot hold a
+transaction open; at-most-once still holds via the node-effect guard plus an in-process in-flight
+join. OpenMAO guarantees at most one provider invocation per call, not remote exactly-once.
+
 ## Enforced Capability Boundary
 
 OpenMAO supports cooperative integration paths, but near-term releases should prioritize enforceable ones.

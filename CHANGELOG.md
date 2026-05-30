@@ -25,6 +25,37 @@ All notable public release changes for OpenMAO are documented here.
 - Deterministic local Chief of Staff smoke: `cos init` then `cos tick` seeds cadences, fires the
   sensors, and surfaces evidence-backed notifications; re-ticking at the same time is a no-op.
 
+## v0.4.0 - 2026-05-29
+
+Adds the first real, side-effecting capability provider behind OpenMAO authority.
+
+### Added
+
+- GitHub issue-comment provider: a real, side-effecting capability provider that creates a comment on a GitHub issue. The credential is resolved at execution time and sent only in the Authorization header; it never appears in capability calls, results, events, traces, or logs.
+- Credential broker: an environment-backed broker resolves a non-secret `cred_*` handle to a secret inside provider code only. `Capability.credential_handle` binds a capability to a specific handle, and the gateway rejects a call whose handle does not match, so a worker cannot steer credential resolution to another configured secret.
+- Async capability execution: providers may perform real network I/O. The gateway awaits provider execution outside the database transaction while preserving at-most-once execution through a durable node-effect guard plus an in-process in-flight join.
+- Opt-in real-provider wiring: the GitHub provider is registered only when `OPENMAO_GITHUB_ENABLED=1` and `OPENMAO_CRED_GITHUB` is set. With no configuration the runtime is mock-only, so the default demo and CI need no credentials.
+
+### Changed
+
+- Side-effecting providers declare themselves so the side-effect / approval gate is enforced even if a capability is misregistered as non-side-effecting.
+- The runtime secret guard also rejects GitHub fine-grained (`github_pat_`) tokens.
+
+### Semantics
+
+- OpenMAO guarantees at most one provider invocation per capability call, not remote exactly-once: if a request times out after GitHub created the comment but before OpenMAO records success, the call is recorded as failed even though the comment exists. Reconcile by inspecting the issue's comments before retrying.
+
+### Upgrade note
+
+- This release adds `Capability.credential_handle` and enforces capability-bound credentials. A local `.openmao` database created before v0.4.0 that holds a credential-requiring capability without the new field will block such calls; reset local state (`rm -rf .openmao`) or re-register the capability when upgrading. The default demos already reset local state.
+
+### Verification
+
+- `make check`
+- `rm -rf .openmao && make demo && make demo-approve && rm -rf .openmao`
+- `rm -rf .openmao && npm run cli -- worker demo && npm run cli -- approvals approve approval_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb && rm -rf .openmao`
+- Optional, gated (real network, throwaway repo): `OPENMAO_GITHUB_ENABLED=1 OPENMAO_CRED_GITHUB=… ` drive a governed GitHub issue-comment capability end to end.
+
 ## v0.3.1 - 2026-05-29
 
 Patch release for public documentation and clarity fixes after the v0.3.0 release.

@@ -52,6 +52,22 @@ type InvokeTransactionResult =
   | { mode: "pending"; invocation: CapabilityInvocation }
   | { mode: "execute"; executable: ExecutableCapability };
 
+/**
+ * In-process registry of capability executions currently awaiting their async
+ * provider, keyed by `${database.path}:${workspace_id}:${call.id}`. A concurrent
+ * duplicate invocation of the same call (for example a retried HTTP request)
+ * joins the original execution and returns its result instead of recording a
+ * spurious failure against the still-running provider call. The key includes the
+ * durable database path so concurrent invocations against the same backing file
+ * join even through different `Database` handles, while distinct database files
+ * that reuse the deterministic demo/test IDs never share in-flight state. The
+ * map is only consulted when the durable node-effect guard reports the effect
+ * already exists, so two separate in-memory databases (which never share
+ * effects) cannot cross-contaminate. A cross-process retry has no in-flight
+ * entry and still falls back to the durable "refuse to re-execute" guard.
+ */
+const INFLIGHT_PROVIDER_EXECUTIONS = new Map<string, Promise<CapabilityResult>>();
+
 export class CapabilityRegistryError extends Error {}
 
 export class CapabilityRegistryService {
@@ -85,6 +101,11 @@ export class CapabilityRegistryService {
 
   register(capability: Capability): Capability {
     return this.database.transaction(() => {
+      // The bound handle is persisted and emitted in the registration event, so
+      // it must be a non-secret cred_* handle — never a raw token.
+      if (capability.credential_handle) {
+        validateCredentialHandle(capability.credential_handle);
+      }
       const registered = this.capabilities.save(capability);
       this.events.append({
         workspace_id: registered.workspace_id,
@@ -97,7 +118,7 @@ export class CapabilityRegistryService {
     });
   }
 
-  invoke(callInput: CapabilityCall): CapabilityInvocation {
+  async invoke(callInput: CapabilityCall): Promise<CapabilityInvocation> {
     const transactionResult = this.database.transaction<InvokeTransactionResult>(() => {
       const call = CapabilityCallSchema.parse(callInput);
       const capability = this.capabilities.get(call.workspace_id, call.capability_name);
@@ -246,7 +267,7 @@ export class CapabilityRegistryService {
     }
 
     const executable = transactionResult.executable;
-    const result = this.executeProvider(executable.call, executable.capability);
+    const result = await this.executeProvider(executable.call, executable.capability);
     return {
       call: executable.call,
       decision: executable.decision,
@@ -255,7 +276,10 @@ export class CapabilityRegistryService {
     };
   }
 
-  resumeApprovedCall(approvalId: string, input: { workspace_id: string }): CapabilityInvocation {
+  async resumeApprovedCall(
+    approvalId: string,
+    input: { workspace_id: string },
+  ): Promise<CapabilityInvocation> {
     const approval = this.approvals.approvals.get(approvalId);
     if (!approval) {
       throw new CapabilityRegistryError(`approval request not found: ${approvalId}`);
@@ -277,7 +301,7 @@ export class CapabilityRegistryService {
     if (!call) {
       throw new CapabilityRegistryError(`capability call not found: ${approval.payload.target_id}`);
     }
-    return this.invoke(call);
+    return await this.invoke(call);
   }
 
   private decideCall(call: CapabilityCall, capability: Capability): PolicyDecision {
@@ -306,8 +330,29 @@ export class CapabilityRegistryService {
     if (capability.credential_handle_required && !call.credential_handle) {
       return `Capability requires a credential handle: ${call.capability_name}.`;
     }
+    // Bind the credential to the capability, not the caller. A capability that
+    // brokers a credential must declare the handle it is bound to, and any call
+    // that carries a credential handle must use exactly that declared handle —
+    // otherwise a worker could steer broker resolution to any other configured
+    // credential by naming it in the call. Gating the match on the *call*'s
+    // handle (not the capability's) means a side-effecting capability that
+    // forgot to declare a binding still cannot resolve a worker-named handle.
+    if (capability.credential_handle_required && !capability.credential_handle) {
+      return `Capability requires a declared credential handle binding: ${call.capability_name}.`;
+    }
+    if (call.credential_handle && call.credential_handle !== capability.credential_handle) {
+      return `Capability call credential handle does not match the capability's bound handle: ${call.capability_name}.`;
+    }
     if (capability.side_effecting && !call.side_effecting) {
       return `Capability call must be marked side-effecting: ${call.capability_name}.`;
+    }
+    // An intrinsically side-effecting provider must run through the side-effect /
+    // approval gate even if the capability was misregistered as non-side-effecting.
+    if (
+      this.providers.get(call.provider)?.sideEffecting &&
+      (!capability.side_effecting || !call.side_effecting)
+    ) {
+      return `Provider is side-effecting; capability and call must be marked side-effecting: ${call.capability_name}.`;
     }
     return null;
   }
@@ -407,7 +452,10 @@ export class CapabilityRegistryService {
     });
   }
 
-  private executeProvider(call: CapabilityCall, capability: Capability): CapabilityResult {
+  private async executeProvider(
+    call: CapabilityCall,
+    capability: Capability,
+  ): Promise<CapabilityResult> {
     this.requireProviderExecutableRun(call);
     const existing = this.results.getForCall(call.workspace_id, call.id);
     if (existing) {
@@ -425,8 +473,16 @@ export class CapabilityRegistryService {
 
     const node = `capability:${call.capability_name}`;
     const effectKey = `${call.id}:provider`;
+    const inflightKey = `${this.database.path}:${call.workspace_id}:${call.id}`;
     const { effect, created } = this.ensureProviderEffect(call, node, effectKey);
     if (!created) {
+      const inflight = INFLIGHT_PROVIDER_EXECUTIONS.get(inflightKey);
+      if (inflight) {
+        // A concurrent invocation of the same call is mid-flight against this
+        // backing database: join it rather than poisoning the in-flight side
+        // effect (the durable node effect is shared across handles to one file).
+        return await inflight;
+      }
       return this.recordFailedResult(
         call,
         effect.id,
@@ -434,15 +490,30 @@ export class CapabilityRegistryService {
       );
     }
 
+    const execution = this.runProviderExecution(call, capability, provider, effect.id);
+    INFLIGHT_PROVIDER_EXECUTIONS.set(inflightKey, execution);
     try {
-      const providerResult = provider.execute(call);
+      return await execution;
+    } finally {
+      INFLIGHT_PROVIDER_EXECUTIONS.delete(inflightKey);
+    }
+  }
+
+  private async runProviderExecution(
+    call: CapabilityCall,
+    capability: Capability,
+    provider: CapabilityProvider,
+    nodeEffectId: string,
+  ): Promise<CapabilityResult> {
+    try {
+      const providerResult = await provider.execute(call);
       const result = CapabilityResultSchema.parse({
         ...providerResult,
         id: newId("capresult"),
         workspace_id: call.workspace_id,
         run_id: call.run_id,
         call_id: call.id,
-        node_effect_id: effect.id,
+        node_effect_id: nodeEffectId,
       });
       assertNoSensitiveMaterial(result.output, "capability_result.output");
       assertNoSensitiveMaterial(result.artifacts, "capability_result.artifacts");
@@ -460,7 +531,7 @@ export class CapabilityRegistryService {
           workspace_id: call.workspace_id,
           run_id: call.run_id,
           call_id: call.id,
-          node_effect_id: effect.id,
+          node_effect_id: nodeEffectId,
           status: "failed",
           error:
             error instanceof Error ? safeErrorMessage(error.message) : "capability provider failed",
