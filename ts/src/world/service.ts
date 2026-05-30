@@ -29,6 +29,26 @@ import {
 const RECENT_EVENT_LIMIT = 20;
 const WORLD_MODEL_EVENT_KINDS = new Set(["world_model.updated"]);
 
+/**
+ * Deterministic, content-complete serialization with recursively sorted keys.
+ * Unlike `JSON.stringify(value, keysArray)` (whose array replacer is an
+ * allowlist that drops nested-object properties), this includes nested content
+ * so the snapshot id reflects the full payload.
+ */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value) ?? "null";
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
+    .join(",")}}`;
+}
+
 export class WorldModelServiceError extends Error {}
 
 export class WorldModelService {
@@ -137,7 +157,10 @@ export class WorldModelService {
       const generatedAt = workspaceEvents.at(-1)?.timestamp ?? workspace.created_at;
       const collectiveMemory = this.memoryEntries
         .listForWorkspace(workspaceId)
-        .filter((entry) => entry.scope === "collective")
+        .filter(
+          (entry) =>
+            entry.scope === "collective" && entry.status !== "rejected" && entry.status !== "stale",
+        )
         .map((entry) => {
           const candidateId = parseSourcePromotion(entry.provenance.note);
           return {
@@ -234,7 +257,6 @@ export class WorldModelService {
   }
 
   private snapshotId(payload: Record<string, unknown>): string {
-    const encoded = JSON.stringify(payload, Object.keys(payload).sort());
-    return `world_${createHash("sha256").update(encoded).digest("hex").slice(0, 32)}`;
+    return `world_${createHash("sha256").update(stableStringify(payload)).digest("hex").slice(0, 32)}`;
   }
 }

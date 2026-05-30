@@ -10,6 +10,7 @@ import {
   ApprovalRequestSchema,
   ArtifactSchema,
   CapabilitySchema,
+  CorroborationSchema,
   GoalSchema,
   IngestionRecordSchema,
   MemoryEntrySchema,
@@ -32,11 +33,14 @@ import {
   ApprovalStore,
   ArtifactStore,
   CapabilityStore,
+  CorroborationStore,
   Database,
   EventStore,
   GoalStore,
   IngestionRecordStore,
+  MemoryEntryStore,
   OrgChangeProposalStore,
+  PromotionCandidateStore,
   RunStore,
   TaskEnvelopeStore,
   TraceStore,
@@ -192,6 +196,114 @@ describe("TypeScript memory promotion and world model", () => {
     new WorldModelSnapshotStore(database).delete(snapshot.id);
     const rebuilt = worldService.rebuild(run.workspace_id, run.id);
     expect(rebuilt).toEqual(snapshot);
+  });
+
+  it("makes the snapshot id sensitive to collective-memory content, not just length", async () => {
+    const run = await seedRunningRun();
+    const prov = {
+      agent_id: null,
+      role_id: null,
+      task_id: null,
+      run_id: null,
+      source_event_id: null,
+      note: "source_promotion:promo_cccccccccccccccccccccccccccccccc",
+    };
+    new PromotionCandidateStore(database).save(
+      PromotionCandidateSchema.parse({
+        id: "promo_cccccccccccccccccccccccccccccccc",
+        workspace_id: run.workspace_id,
+        source_memory_entry: "mem_dddddddddddddddddddddddddddddddd",
+        proposed_by: "agent_55555555555555555555555555555555",
+        proposed_content: "knowledge",
+        rationale: "seen across runs",
+        corroboration_count: 0,
+        status: "pending",
+        created_at: "2026-05-27T15:20:00Z",
+      }),
+    );
+    new MemoryEntryStore(database).save(
+      MemoryEntrySchema.parse({
+        id: "mem_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        workspace_id: run.workspace_id,
+        scope: "collective",
+        owner_id: null,
+        kind: "semantic",
+        content: "knowledge",
+        provenance: prov,
+        confidence: 0.9,
+        status: "confirmed",
+        created_at: "2026-05-27T15:20:00Z",
+      }),
+    );
+
+    const worldService = new WorldModelService(database);
+    const before = worldService.rebuild(run.workspace_id, run.id);
+    expect(before.collective_memory[0]?.corroboration_count).toBe(0);
+
+    // Direct store write (no new event) changes only the corroboration count.
+    new CorroborationStore(database).save(
+      CorroborationSchema.parse({
+        id: "corrob_11111111111111111111111111111111",
+        workspace_id: run.workspace_id,
+        candidate_id: "promo_cccccccccccccccccccccccccccccccc",
+        source_memory_entry: "mem_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        corroborated_by: "agent_77777777777777777777777777777777",
+        strength: 1,
+        note: null,
+        created_at: "2026-05-27T15:20:05Z",
+      }),
+    );
+    const after = worldService.rebuild(run.workspace_id, run.id);
+
+    expect(after.collective_memory[0]?.corroboration_count).toBe(1);
+    // Same events, same entry count — only the nested content changed, so the id must change.
+    expect(after.id).not.toBe(before.id);
+  });
+
+  it("excludes rejected or stale collective memory from the world model", async () => {
+    const run = await seedRunningRun();
+    const prov = {
+      agent_id: null,
+      role_id: null,
+      task_id: null,
+      run_id: null,
+      source_event_id: null,
+      note: null,
+    };
+    const entries = new MemoryEntryStore(database);
+    entries.save(
+      MemoryEntrySchema.parse({
+        id: "mem_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        workspace_id: run.workspace_id,
+        scope: "collective",
+        owner_id: null,
+        kind: "semantic",
+        content: "trusted knowledge",
+        provenance: prov,
+        confidence: 0.9,
+        status: "confirmed",
+        created_at: "2026-05-27T15:20:00Z",
+      }),
+    );
+    entries.save(
+      MemoryEntrySchema.parse({
+        id: "mem_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+        workspace_id: run.workspace_id,
+        scope: "collective",
+        owner_id: null,
+        kind: "semantic",
+        content: "discredited knowledge",
+        provenance: prov,
+        confidence: 0.4,
+        status: "stale",
+        created_at: "2026-05-27T15:20:00Z",
+      }),
+    );
+
+    const snapshot = new WorldModelService(database).rebuild(run.workspace_id, run.id);
+    const ids = snapshot.collective_memory.map((entry) => entry.id);
+    expect(ids).toContain("mem_a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1");
+    expect(ids).not.toContain("mem_b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2");
   });
 
   it("round-trips artifact and trace metadata", async () => {
