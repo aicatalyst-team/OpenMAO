@@ -277,7 +277,11 @@ export class WorkerOutcomeStore {
     return this.database.transaction(() => {
       const existing = this.getByIdempotencyKey(parsed.workspace_id, parsed.idempotency_key);
       if (existing) {
-        if (jsonEqual(existing, parsed)) {
+        // submitted_at is server-generated and excluded from conflict detection so that
+        // a replay arriving in a different millisecond is not treated as a conflicting record.
+        const { submitted_at: _e, ...existingStable } = existing;
+        const { submitted_at: _p, ...parsedStable } = parsed;
+        if (jsonEqual(existingStable, parsedStable)) {
           return existing;
         }
         throw new WorkerOutcomeConflictError(
