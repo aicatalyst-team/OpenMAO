@@ -178,4 +178,32 @@ describe("memory operator surfaces", () => {
       });
     }
   });
+
+  it("scopes corroborate to the candidate's workspace (404 on mismatch)", async () => {
+    const server = createServer({ dbPath, operatorToken });
+    await new Promise<void>((resolve) => {
+      server.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = server.address() as AddressInfo;
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    const headers = {
+      "x-openmao-actor": "test_operator",
+      "x-openmao-operator-token": operatorToken,
+    };
+    try {
+      const response = await fetch(
+        `${baseUrl}/memory/promotions/${CANDIDATE}/corroborate?workspace_id=ws_00000000000000000000000000000000`,
+        {
+          method: "POST",
+          headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify({ source_memory_entry: CORROBORATOR, corroborated_by: ACTOR }),
+        },
+      );
+      expect(response.status).toBe(404);
+    } finally {
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    }
+  });
 });

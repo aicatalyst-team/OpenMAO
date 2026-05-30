@@ -771,6 +771,13 @@ export function createServer(options: ServerOptions = {}) {
           sendJson(response, 400, { error: "missing_corroboration_fields" });
           return;
         }
+        const corroborateCandidate = new PromotionCandidateStore(database).get(
+          approvalRoute.promotionCorroborateId,
+        );
+        if (!corroborateCandidate || corroborateCandidate.workspace_id !== context.workspaceId) {
+          sendNotFound(response);
+          return;
+        }
         sendJson(
           response,
           200,

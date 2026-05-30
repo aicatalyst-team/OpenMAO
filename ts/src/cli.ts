@@ -11,6 +11,7 @@ import {
   IngestionRecordStore,
   MemoryEntryStore,
   OrgChangeProposalStore,
+  PromotionCandidateStore,
   RunStore,
   WorkerIdentityStore,
   WorkerOutcomeStore,
@@ -460,6 +461,10 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
         throw new Error(
           "usage: memory corroborate <candidate_id> <source_memory_id> --by <actor_id>",
         );
+      }
+      const corroborateCandidate = new PromotionCandidateStore(database).get(candidateId);
+      if (!corroborateCandidate || corroborateCandidate.workspace_id !== selectedWorkspace) {
+        throw new Error(`promotion candidate not found in workspace: ${candidateId}`);
       }
       const strength = optionValue(args, "--strength");
       printJson(

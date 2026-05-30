@@ -68,7 +68,10 @@ export class MemoryRetrievalService {
       return [];
     }
 
-    const minConfidence = filters.min_confidence ?? 0;
+    const minConfidence =
+      filters.min_confidence === undefined || Number.isNaN(filters.min_confidence)
+        ? 0
+        : filters.min_confidence;
     const limit =
       filters.limit === undefined || Number.isNaN(filters.limit)
         ? DEFAULT_LIMIT
