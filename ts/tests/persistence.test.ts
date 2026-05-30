@@ -173,6 +173,7 @@ describe("TypeScript persistence", () => {
         "org_change_proposals",
         "org_change_applications",
         "org_control",
+        "autonomy_cases",
         "events",
         "ingestion_records",
         "traces",
@@ -180,7 +181,7 @@ describe("TypeScript persistence", () => {
         "active_run_locks",
       ]),
     );
-    expect(userVersion).toBe(5);
+    expect(userVersion).toBe(6);
   });
 
   it("saves workspaces idempotently and rejects conflicting overwrites", async () => {

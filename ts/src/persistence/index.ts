@@ -11,6 +11,7 @@ export {
   TraceConflictError,
   TraceStore,
 } from "./audit.js";
+export { AutonomyCaseError, AutonomyCaseStore } from "./autonomy.js";
 export { CadenceConflictError, CadenceStore } from "./cadences.js";
 export {
   CapabilityCallConflictError,
@@ -50,6 +51,7 @@ export { NotificationStore } from "./notifications.js";
 export {
   AgentConflictError,
   AgentStore,
+  AutonomyTransitionConflictError,
   OrganizationConflictError,
   OrganizationStore,
   RoleConflictError,

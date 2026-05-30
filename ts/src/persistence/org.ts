@@ -12,6 +12,9 @@ import { dumpJson, jsonEqual } from "./serialization.js";
 type PayloadRow = { payload_json: string };
 
 export class OrganizationConflictError extends Error {}
+// Raised when a compare-and-swap autonomy transition finds the org at a different level than
+// expected — the dial drifted since the case was justified, so the widening must not land.
+export class AutonomyTransitionConflictError extends OrganizationConflictError {}
 export class RoleConflictError extends Error {}
 export class AgentConflictError extends Error {}
 
@@ -47,6 +50,42 @@ export class OrganizationStore {
       .prepare("SELECT payload_json FROM organizations WHERE workspace_id = ? ORDER BY id")
       .all(workspaceId) as PayloadRow[];
     return rows.map((row) => OrganizationSchema.parse(JSON.parse(row.payload_json)));
+  }
+
+  /**
+   * Compare-and-swap the org's autonomy level: move to `next_level` only if it is currently
+   * `expected_level`. The CAS makes the dial drift-safe — a widening can only land on the exact
+   * level its case was justified against. Workspace-scoped.
+   */
+  setAutonomyLevel(
+    organizationId: string,
+    input: {
+      workspace_id: string;
+      expected_level: Organization["autonomy_level"];
+      next_level: Organization["autonomy_level"];
+    },
+  ): Organization {
+    return this.database.transaction(() => {
+      const current = this.get(organizationId);
+      if (!current || current.workspace_id !== input.workspace_id) {
+        throw new OrganizationConflictError(
+          `organization not found in workspace ${input.workspace_id}: ${organizationId}`,
+        );
+      }
+      if (current.autonomy_level !== input.expected_level) {
+        throw new AutonomyTransitionConflictError(
+          `organization ${organizationId} is at autonomy '${current.autonomy_level}', expected '${input.expected_level}'`,
+        );
+      }
+      if (input.next_level === input.expected_level) {
+        return current;
+      }
+      const updated = OrganizationSchema.parse({ ...current, autonomy_level: input.next_level });
+      this.database.connection
+        .prepare("UPDATE organizations SET payload_json = ? WHERE id = ? AND workspace_id = ?")
+        .run(dumpJson(updated), updated.id, input.workspace_id);
+      return updated;
+    });
   }
 }
 

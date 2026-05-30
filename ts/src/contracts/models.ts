@@ -742,6 +742,29 @@ export const OrgControlStateSchema = z
   })
   .strict();
 
+export const AutonomyLevelSchema = z.enum(["advisory", "supervised", "bounded"]);
+
+// M4 earned autonomy. An `AutonomyCase` is a human-ratified, evidence-backed request to WIDEN an
+// organization's autonomy one step (advisory → supervised → bounded). The dial only ever moves via
+// a ratified case — never a flag, never automatically — and only on an audited track record.
+export const AutonomyCaseSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    org_id: CanonicalIdSchema,
+    current_level: AutonomyLevelSchema,
+    proposed_level: AutonomyLevelSchema,
+    // The audited track record backing the widening (e.g. verified applies, incident-free runs).
+    evidence: z.array(OrgChangeEvidenceSchema).default([]),
+    rationale: z.string(),
+    status: z.enum(["proposed", "ratified", "rejected"]).default("proposed"),
+    proposed_by: z.string(),
+    ratified_by: z.string().nullable().default(null),
+    created_at: UtcTimestampSchema,
+    resolved_at: UtcTimestampSchema.nullable().default(null),
+  })
+  .strict();
+
 export const CollectiveMemorySummarySchema = z
   .object({
     id: CanonicalIdSchema,
@@ -812,6 +835,7 @@ export const canonicalModelSchemas = {
   Notification: NotificationSchema,
   OrgChangeApplication: OrgChangeApplicationSchema,
   OrgControlState: OrgControlStateSchema,
+  AutonomyCase: AutonomyCaseSchema,
   WorldModelSnapshot: WorldModelSnapshotSchema,
 } as const;
 
@@ -885,4 +909,6 @@ export type Notification = z.infer<typeof NotificationSchema>;
 export type OrgChangeTargetState = z.infer<typeof OrgChangeTargetStateSchema>;
 export type OrgChangeApplication = z.infer<typeof OrgChangeApplicationSchema>;
 export type OrgControlState = z.infer<typeof OrgControlStateSchema>;
+export type AutonomyLevel = z.infer<typeof AutonomyLevelSchema>;
+export type AutonomyCase = z.infer<typeof AutonomyCaseSchema>;
 export type WorldModelSnapshot = z.infer<typeof WorldModelSnapshotSchema>;
