@@ -214,4 +214,43 @@ describe("evidence-backed memory retrieval", () => {
     expect(result?.evidence.source_promotion).toBeNull();
     expect(result?.evidence.corroboration_count).toBe(0);
   });
+
+  it("hides owned individual memory unless the search is scoped to that owner", () => {
+    const owner = "agent_99999999999999999999999999999999";
+    const id = "mem_abababababababababababababababab";
+    saveEntry({
+      id,
+      scope: "individual",
+      owner_id: owner,
+      content: "a private note about email strategy",
+    });
+    const service = new MemoryRetrievalService(database);
+
+    expect(service.search(WS, "email").map((r) => r.entry.id)).toEqual([]);
+    expect(service.search(WS, "email", { owner_id: owner }).map((r) => r.entry.id)).toEqual([id]);
+  });
+
+  it("never returns rejected or stale memory as reusable knowledge", () => {
+    saveEntry({
+      id: "mem_cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      scope: "collective",
+      status: "stale",
+      content: "email tips that went stale",
+    });
+    saveEntry({
+      id: "mem_dcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdc",
+      scope: "collective",
+      status: "rejected",
+      content: "email tips that were rejected",
+    });
+    saveEntry({
+      id: "mem_efefefefefefefefefefefefefefefef",
+      scope: "collective",
+      status: "confirmed",
+      content: "email tips that still hold up",
+    });
+
+    const results = new MemoryRetrievalService(database).search(WS, "email");
+    expect(results.map((r) => r.entry.id)).toEqual(["mem_efefefefefefefefefefefefefefefef"]);
+  });
 });

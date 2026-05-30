@@ -7,6 +7,11 @@ export type MemorySearchFilters = {
   kind?: MemoryEntry["kind"];
   min_confidence?: number;
   limit?: number;
+  /**
+   * Scopes the search to a specific owner so a caller can retrieve that owner's
+   * private individual memory. Owned individual memory is otherwise excluded.
+   */
+  owner_id?: string;
 };
 
 /**
@@ -78,6 +83,20 @@ export class MemoryRetrievalService {
         continue;
       }
       if (entry.confidence < minConfidence) {
+        continue;
+      }
+      // Only confirmed-tier knowledge is reusable; never surface rejected or
+      // stale memory as evidence.
+      if (entry.status === "rejected" || entry.status === "stale") {
+        continue;
+      }
+      // Agent-private individual memory (owned) is returned only when the caller
+      // scopes the search to that owner; collective and unowned memory are shared.
+      if (
+        entry.scope === "individual" &&
+        entry.owner_id !== null &&
+        entry.owner_id !== filters.owner_id
+      ) {
         continue;
       }
 
