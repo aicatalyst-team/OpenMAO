@@ -6,6 +6,30 @@ All notable public release changes for OpenMAO are documented here.
 
 No unreleased changes.
 
+## v0.5.0 - 2026-05-30
+
+Makes institutional memory compound: knowledge accumulates with evidence and becomes reusable.
+
+### Added
+
+- Corroboration-based ratification: independent memory entries can corroborate a pending promotion as linked, auditable evidence. Each corroboration must come from a distinct actor (not the proposer) and a distinct, non-rejected/stale individual memory entry; it raises the ratified entry's confidence and can be required as a minimum bar. Human approval remains mandatory for every collective-memory write.
+- Evidence-backed memory retrieval: a deterministic ranked search over stored memory that returns results with their evidence (confidence, corroboration count, source promotion). Confirmed-tier only; owned individual memory stays private to its owner; results are workspace-scoped.
+- Operator surfaces: `memory search | list | corroborate` (CLI), `GET /memory/search` and an idempotent `POST /memory/promotions/:id/corroborate` (API), and a Memory Search console view with corroboration counts on promotions.
+- World model: a `collective_memory` summary (kind, confidence, corroboration count) so operators can see the institutional-memory asset accumulating, derived as a rebuildable projection.
+
+### Notes
+
+- Corroboration recording is idempotent: re-submitting the same corroboration returns the existing record rather than double-counting. The API attributes a corroboration to the authenticated actor.
+
+### Upgrade note
+
+- This release adds the `Corroboration` model, a `promotion_corroborations` table, and a `collective_memory` field on the world-model snapshot. All additions are backward-compatible; a local `.openmao` database created before v0.5.0 keeps working.
+
+### Verification
+
+- `make check`
+- `rm -rf .openmao && make demo && make demo-approve && rm -rf .openmao`
+
 ## v0.4.0 - 2026-05-29
 
 Adds the first real, side-effecting capability provider behind OpenMAO authority.

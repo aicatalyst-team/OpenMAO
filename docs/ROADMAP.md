@@ -165,6 +165,11 @@ storage and becomes the organization's growing institutional asset.
 Exit signal: the organization visibly accumulates and reuses ratified knowledge, and operators can
 see the asset growing across runs and teams.
 
+> Status: `v0.5.0` ships the first Phase 2 slice — corroboration-based ratification (the accumulate
+> half: independent, evidence-backed, human-gated) and evidence-backed memory retrieval (the reuse
+> half), surfaced in the CLI, API, console, and the world model's `collective_memory`. Transactive
+> memory, memory decay/contradiction detection, and the world model as a decision input remain ahead.
+
 ## Phase 3: The Self-Correction Loop
 
 **The frontier. Autonomy:** `bounded` and widening.
