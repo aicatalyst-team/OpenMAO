@@ -6,6 +6,8 @@ import { dirname, join } from "node:path";
 import {
   ApprovalPayloadSchema,
   type ApprovalRequest,
+  type Corroboration,
+  CorroborationSchema,
   EventPayloadSchema,
   type MemoryEntry,
   MemoryEntrySchema,
@@ -19,12 +21,14 @@ import {
 import { ApprovalService } from "../governance/index.js";
 import {
   ApprovalStore,
+  CorroborationStore,
   type Database,
   EventStore,
   MemoryEntryStore,
   NodeEffectStore,
   PromotionCandidateStore,
 } from "../persistence/index.js";
+import { sourcePromotionNote } from "./provenance.js";
 
 export class PromotionServiceError extends Error {}
 
@@ -38,23 +42,38 @@ export class CollectiveMemoryEffectError extends PromotionServiceError {
   }
 }
 
+function deterministicCorroborationId(
+  workspaceId: string,
+  candidateId: string,
+  sourceMemoryEntry: string,
+): string {
+  const digest = createHash("sha256")
+    .update(`${workspaceId}:${candidateId}:${sourceMemoryEntry}`)
+    .digest("hex");
+  return `corrob_${digest.slice(0, 32)}`;
+}
+
 export class PromotionService {
   private readonly entries: MemoryEntryStore;
   private readonly candidates: PromotionCandidateStore;
   private readonly events: EventStore;
   private readonly effects: NodeEffectStore;
   private readonly approvals: ApprovalStore;
+  private readonly corroborations: CorroborationStore;
+  private readonly minCorroboration: number;
   private readonly collectiveMemoryDir: string;
 
   constructor(
     private readonly database: Database,
-    options: { collective_memory_dir?: string | null } = {},
+    options: { collective_memory_dir?: string | null; min_corroboration?: number } = {},
   ) {
     this.entries = new MemoryEntryStore(database);
     this.candidates = new PromotionCandidateStore(database);
     this.events = new EventStore(database);
     this.effects = new NodeEffectStore(database);
     this.approvals = new ApprovalStore(database);
+    this.corroborations = new CorroborationStore(database);
+    this.minCorroboration = Math.max(0, Math.floor(options.min_corroboration ?? 0));
     this.collectiveMemoryDir =
       options.collective_memory_dir ??
       (database.path === ":memory:"
@@ -139,6 +158,124 @@ export class PromotionService {
     });
   }
 
+  recordCorroboration(
+    candidateId: string,
+    input: {
+      source_memory_entry: string;
+      corroborated_by: string;
+      strength?: number;
+      note?: string | null;
+      run_id?: string | null;
+      corroboration_id?: string | null;
+    },
+  ): { corroboration: Corroboration; candidate: PromotionCandidate } {
+    return this.database.transaction(() => {
+      const candidate = this.candidates.get(candidateId);
+      if (!candidate) {
+        throw new PromotionServiceError(`promotion candidate not found: ${candidateId}`);
+      }
+      const corroborationId =
+        input.corroboration_id ??
+        deterministicCorroborationId(
+          candidate.workspace_id,
+          candidate.id,
+          input.source_memory_entry,
+        );
+      const priorCorroboration = this.corroborations.get(corroborationId);
+      if (priorCorroboration) {
+        // Idempotent retry: this exact corroboration was already recorded.
+        if (
+          priorCorroboration.candidate_id !== candidateId ||
+          priorCorroboration.source_memory_entry !== input.source_memory_entry
+        ) {
+          throw new PromotionServiceError(
+            "corroboration id already records a different corroboration",
+          );
+        }
+        return { corroboration: priorCorroboration, candidate };
+      }
+      if (candidate.status !== "pending") {
+        throw new PromotionServiceError("only pending promotion candidates can be corroborated");
+      }
+      if (input.corroborated_by === candidate.proposed_by) {
+        throw new PromotionServiceError("a promotion cannot be corroborated by its proposer");
+      }
+      if (input.source_memory_entry === candidate.source_memory_entry) {
+        throw new PromotionServiceError(
+          "a promotion cannot be corroborated by its own source memory entry",
+        );
+      }
+      const source = this.entries.get(input.source_memory_entry);
+      if (!source) {
+        throw new PromotionServiceError(
+          `corroborating memory entry not found: ${input.source_memory_entry}`,
+        );
+      }
+      if (source.workspace_id !== candidate.workspace_id) {
+        throw new PromotionServiceError(
+          "corroborating memory entry does not belong to candidate workspace",
+        );
+      }
+      if (input.run_id && source.provenance.run_id !== input.run_id) {
+        throw new PromotionServiceError(
+          "run-bound corroboration must match the corroborating memory's provenance run",
+        );
+      }
+      if (source.scope !== "individual") {
+        throw new PromotionServiceError("corroboration must come from an individual memory entry");
+      }
+      if (source.status === "rejected" || source.status === "stale") {
+        throw new PromotionServiceError(
+          "a rejected or stale memory entry cannot corroborate a promotion",
+        );
+      }
+      const alreadyCorroborated = this.corroborations
+        .listForCandidate(candidateId)
+        .some(
+          (existing) =>
+            existing.source_memory_entry === input.source_memory_entry ||
+            existing.corroborated_by === input.corroborated_by,
+        );
+      if (alreadyCorroborated) {
+        throw new PromotionServiceError(
+          "this memory entry or actor has already corroborated this promotion candidate",
+        );
+      }
+
+      const corroboration = this.corroborations.save(
+        CorroborationSchema.parse({
+          id: corroborationId,
+          workspace_id: candidate.workspace_id,
+          candidate_id: candidate.id,
+          source_memory_entry: input.source_memory_entry,
+          corroborated_by: input.corroborated_by,
+          strength: input.strength ?? 1,
+          note: input.note ?? null,
+          created_at: utcNow(),
+        }),
+      );
+      const count = this.corroborations.countForCandidate(candidateId);
+      const updatedCandidate = this.candidates.setCorroborationCount(candidateId, count);
+
+      this.events.append({
+        workspace_id: candidate.workspace_id,
+        run_id: input.run_id ?? source.provenance.run_id,
+        kind: "memory.corroboration_recorded",
+        actor: "promotion_service",
+        payload: EventPayloadSchema.parse({
+          data: {
+            corroboration,
+            corroboration_count: count,
+            promotion_candidate: updatedCandidate,
+          },
+          refs: [corroboration.id, candidate.id, input.source_memory_entry],
+        }),
+        idempotency_key: `${corroboration.id}:corroboration_recorded`,
+      });
+      return { corroboration, candidate: updatedCandidate };
+    });
+  }
+
   ratifyAndWriteCollective(
     candidateId: string,
     input: { workspace_id: string; approval_id: string; resolved_at?: string | null },
@@ -170,11 +307,19 @@ export class PromotionService {
       if (approval.run_id && approval.run_id !== source.provenance.run_id) {
         throw new PromotionServiceError("approval run does not match source memory provenance run");
       }
+      const corroborationCount = this.corroborations.countForCandidate(candidate.id);
+      if (corroborationCount < this.minCorroboration) {
+        throw new PromotionServiceError(
+          `promotion requires at least ${this.minCorroboration} corroboration(s): ${candidate.id}`,
+        );
+      }
 
       const ratified = this.candidates.setStatus(candidate.id, "ratified", {
         resolved_at: input.resolved_at ?? null,
       });
-      const collective = this.entries.save(this.collectiveEntry(ratified, source));
+      const collective = this.entries.save(
+        this.collectiveEntry(ratified, source, corroborationCount),
+      );
       const content = this.collectiveMarkdown(collective, ratified);
       const contentHash = this.contentHash(content);
       const { contentRef, effect } = this.ensureCollectiveFileAndEffect(
@@ -257,7 +402,11 @@ export class PromotionService {
     return approval;
   }
 
-  private collectiveEntry(candidate: PromotionCandidate, source: MemoryEntry): MemoryEntry {
+  private collectiveEntry(
+    candidate: PromotionCandidate,
+    source: MemoryEntry,
+    corroborationCount: number,
+  ): MemoryEntry {
     return MemoryEntrySchema.parse({
       id: `mem_${candidate.id.split("_", 2)[1]}`,
       workspace_id: candidate.workspace_id,
@@ -270,9 +419,9 @@ export class PromotionService {
         run_id: source.provenance.run_id,
         task_id: source.provenance.task_id,
         source_event_id: source.provenance.source_event_id,
-        note: `source_promotion:${candidate.id}`,
+        note: sourcePromotionNote(candidate.id),
       },
-      confidence: Math.min(1, source.confidence + 0.05 * candidate.corroboration_count),
+      confidence: Math.min(1, source.confidence + 0.05 * corroborationCount),
       status: "confirmed",
       created_at: candidate.resolved_at ?? utcNow(),
     });

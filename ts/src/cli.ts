@@ -2,14 +2,17 @@
 import { ApprovalService } from "./governance/index.js";
 import { IngestionService } from "./ingestion/index.js";
 import { LearningService } from "./learning/index.js";
+import { MemoryRetrievalService, PromotionService } from "./memory/index.js";
 import { OrgChangeService, OrgControlService } from "./org/index.js";
 import {
   BoundedWorkEnvelopeStore,
   type Database,
   EventStore,
   IngestionRecordStore,
+  MemoryEntryStore,
   OrgChangeApplicationStore,
   OrgChangeProposalStore,
+  PromotionCandidateStore,
   RunStore,
   WorkerIdentityStore,
   WorkerOutcomeStore,
@@ -80,6 +83,12 @@ function positionalArgs(args: string[]): string[] {
     "--payload",
     "--work",
     "--idempotency-key",
+    "--scope",
+    "--min-confidence",
+    "--limit",
+    "--by",
+    "--strength",
+    "--note",
   ]);
   const positions: string[] = [];
   for (let index = 0; index < args.length; index += 1) {
@@ -148,7 +157,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | org pause|resume|control | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
+        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
       );
       return 0;
     }
@@ -442,6 +451,55 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
         new OrgChangeService(database).revertApplication(application.id, {
           workspace_id: selectedWorkspace,
           actor: "cli_operator",
+        }),
+      );
+      return 0;
+    }
+    if (command === "memory" && subcommand === "search") {
+      const query = positions[2] ?? "";
+      const scope = optionValue(args, "--scope");
+      const kind = optionValue(args, "--kind");
+      const owner = optionValue(args, "--owner");
+      const minConfidence = optionValue(args, "--min-confidence");
+      const limit = optionValue(args, "--limit");
+      printJson(
+        write,
+        new MemoryRetrievalService(database).search(selectedWorkspace, query, {
+          ...(scope ? { scope: scope as never } : {}),
+          ...(kind ? { kind: kind as never } : {}),
+          ...(minConfidence !== null ? { min_confidence: Number(minConfidence) } : {}),
+          ...(owner ? { owner_id: owner } : {}),
+          ...(limit !== null ? { limit: Number(limit) } : {}),
+        }),
+      );
+      return 0;
+    }
+    if (command === "memory" && (subcommand === "list" || subcommand === "")) {
+      printJson(write, new MemoryEntryStore(database).listForWorkspace(selectedWorkspace));
+      return 0;
+    }
+    if (command === "memory" && subcommand === "corroborate") {
+      const candidateId = positions[2];
+      const sourceMemoryId = positions[3];
+      if (!candidateId || !sourceMemoryId) {
+        throw new Error(
+          "usage: memory corroborate <candidate_id> <source_memory_id> --by <actor_id>",
+        );
+      }
+      const corroborateCandidate = new PromotionCandidateStore(database).get(candidateId);
+      if (!corroborateCandidate || corroborateCandidate.workspace_id !== selectedWorkspace) {
+        throw new Error(`promotion candidate not found in workspace: ${candidateId}`);
+      }
+      const strength = optionValue(args, "--strength");
+      printJson(
+        write,
+        new PromotionService(database).recordCorroboration(candidateId, {
+          source_memory_entry: sourceMemoryId,
+          corroborated_by: requireOption(args, "--by"),
+          run_id: optionValue(args, "--run"),
+          note: optionValue(args, "--note"),
+          corroboration_id: optionValue(args, "--id"),
+          ...(strength !== null ? { strength: Number(strength) } : {}),
         }),
       );
       return 0;

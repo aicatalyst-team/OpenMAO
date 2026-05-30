@@ -350,6 +350,22 @@ CREATE TABLE IF NOT EXISTS promotion_candidates (
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
 );
 
+CREATE TABLE IF NOT EXISTS promotion_corroborations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  candidate_id TEXT NOT NULL,
+  source_memory_entry TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+  FOREIGN KEY (candidate_id) REFERENCES promotion_candidates(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_promotion_corroborations_candidate
+ON promotion_corroborations(candidate_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_promotion_corroborations_unique
+ON promotion_corroborations(candidate_id, source_memory_entry);
+
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
@@ -410,9 +426,9 @@ CREATE TABLE IF NOT EXISTS active_run_locks (
 );
 
 INSERT OR IGNORE INTO schema_version (version, applied_at)
-VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+VALUES (4, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;
 `;
 
 export function initializeSchema(connection: SqliteDatabase): void {

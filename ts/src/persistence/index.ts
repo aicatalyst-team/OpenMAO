@@ -30,6 +30,8 @@ export {
   EventStore,
 } from "./events.js";
 export {
+  CorroborationConflictError,
+  CorroborationStore,
   MemoryEntryConflictError,
   MemoryEntryStatusConflictError,
   MemoryEntryStore,

@@ -44,15 +44,18 @@ loop is the hard, valuable thing, and the reason OpenMAO exists.
 
 ## Where It Is Today
 
-OpenMAO is an early, local TypeScript release candidate. It proves the core semantics with a
-deterministic demo that needs no API keys, no real LLM calls, and no hosted services: it spins up a
-small organization, runs a two-agent workflow, pauses for human approval, resumes from durable
-state, promotes memory only after approval, and leaves a fully inspectable event and trace history.
+OpenMAO is an early, self-hostable local release. It proves the core semantics with a deterministic
+demo that needs no API keys, no real LLM calls, and no hosted services: it spins up a small
+organization, runs a two-agent workflow, pauses for human approval, resumes from durable state,
+promotes memory only after approval, and leaves a fully inspectable event and trace history.
 
-The governance, memory, audit, and first institutional-learning foundations are real and tested.
-OpenMAO can detect early operational patterns and create evidence-backed improvement proposals for
-human review. The harder frontier is deeper self-correction where an organization diagnoses causes,
-versions its structure, and earns wider autonomy over a long audited track record.
+Governance is enforced, not cooperative: at least one real, side-effecting capability (an opt-in
+GitHub issue-comment provider) executes only behind policy, approval, a credential broker, and
+at-most-once guarantees, with no raw secret ever touching the work envelope. Institutional memory now
+compounds: knowledge is corroborated by independent evidence, promoted only under human approval, and
+reused through evidence-backed search, while the world model shows the asset growing. The harder
+frontier is deeper self-correction, where an organization diagnoses causes, versions its structure,
+and earns wider autonomy over a long audited track record.
 
 License: Apache-2.0.
 

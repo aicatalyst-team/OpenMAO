@@ -180,7 +180,7 @@ describe("TypeScript persistence", () => {
         "active_run_locks",
       ]),
     );
-    expect(userVersion).toBe(3);
+    expect(userVersion).toBe(4);
   });
 
   it("saves workspaces idempotently and rejects conflicting overwrites", async () => {
