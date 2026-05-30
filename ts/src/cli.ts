@@ -2,6 +2,7 @@
 import { ChiefOfStaffService } from "./chief_of_staff/index.js";
 import { utcNow } from "./contracts/index.js";
 import { ApprovalService } from "./governance/index.js";
+import { ConsoleTransport, HeartbeatService } from "./heartbeat/index.js";
 import { IngestionService } from "./ingestion/index.js";
 import { LearningService } from "./learning/index.js";
 import { MemoryRetrievalService, PromotionService } from "./memory/index.js";
@@ -161,7 +162,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | cos init|tick|inbox|read <id> [--unread] [--at ts] | cadence list|add --kind <kind> --interval <seconds> | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
+        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | cos init|tick|run|inbox|read <id> [--unread] [--at ts] [--beats n] [--interval s] [--daemon] | cadence list|add --kind <kind> --interval <seconds> | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | console",
       );
       return 0;
     }
@@ -647,6 +648,32 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
           at: optionValue(args, "--at") ?? utcNow(),
         }),
       );
+      return 0;
+    }
+    if (command === "cos" && subcommand === "run") {
+      if (selectedWorkspace === WORKSPACE_ID) {
+        spine.initDemoWorkspace();
+      }
+      // The heartbeat daemon: beat on a cadence and deliver digests. Bounded by default (one beat,
+      // safe for scripts); `--daemon` runs until the process is stopped, `--beats n` runs n beats.
+      const intervalSeconds = Number(optionValue(args, "--interval") ?? 3600);
+      const limit = args.includes("--daemon")
+        ? Number.POSITIVE_INFINITY
+        : Number(optionValue(args, "--beats") ?? 1);
+      let count = 0;
+      const beats = await new HeartbeatService(database, {
+        transport: new ConsoleTransport((line) => write(`${line}\n`)),
+      }).run({
+        workspace_id: selectedWorkspace,
+        interval_seconds: intervalSeconds,
+        clock: () => utcNow(),
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        shouldStop: () => count >= limit,
+        onBeat: () => {
+          count += 1;
+        },
+      });
+      printJson(write, { workspace_id: selectedWorkspace, beats });
       return 0;
     }
     if (command === "cos" && subcommand === "inbox") {
