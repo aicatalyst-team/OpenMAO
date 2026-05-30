@@ -416,6 +416,19 @@ CREATE TABLE IF NOT EXISTS org_control (
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
 );
 
+CREATE TABLE IF NOT EXISTS autonomy_cases (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  org_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+  FOREIGN KEY (org_id) REFERENCES organizations(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_autonomy_cases_org
+  ON autonomy_cases (workspace_id, org_id);
+
 CREATE TABLE IF NOT EXISTS active_run_locks (
   workspace_id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL,
@@ -450,9 +463,9 @@ CREATE INDEX IF NOT EXISTS idx_notifications_workspace
 ON notifications(workspace_id, created_at, id);
 
 INSERT OR IGNORE INTO schema_version (version, applied_at)
-VALUES (5, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+VALUES (6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
 
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;
 `;
 
 export function initializeSchema(connection: SqliteDatabase): void {

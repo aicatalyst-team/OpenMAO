@@ -133,6 +133,14 @@ export class OrgChangeApplicationStore {
 
   create(application: OrgChangeApplication): OrgChangeApplication {
     const parsed = OrgChangeApplicationSchema.parse(application);
+    // An application is born `applied`; it reaches `verified` only through `setStatus` after the
+    // apply engine's post-apply check. This keeps the verified track record (which M4 earns autonomy
+    // against) from being injected as a fully-`verified` row at construction.
+    if (parsed.status !== "applied") {
+      throw new OrgChangeApplicationError(
+        `new org change applications must be created as 'applied', not '${parsed.status}'`,
+      );
+    }
     return this.database.transaction(() => {
       const existing = this.get(parsed.id);
       if (existing) {
@@ -167,6 +175,15 @@ export class OrgChangeApplicationStore {
       )
       .get(workspaceId, proposalId) as PayloadRow | undefined;
     return row ? OrgChangeApplicationSchema.parse(JSON.parse(row.payload_json)) : null;
+  }
+
+  listForWorkspace(workspaceId: string): OrgChangeApplication[] {
+    const rows = this.database.connection
+      .prepare(
+        "SELECT payload_json FROM org_change_applications WHERE workspace_id = ? ORDER BY id",
+      )
+      .all(workspaceId) as PayloadRow[];
+    return rows.map((row) => OrgChangeApplicationSchema.parse(JSON.parse(row.payload_json)));
   }
 
   setStatus(
