@@ -25,6 +25,10 @@ coverage/
 # Agent local user state
 .claude/settings.local.json
 .claude/worktrees/
+.claude/commands/ship-with-audit.md
+
+# Local audit tooling (never publish)
+/tools/codex-audit.sh
 
 # OpenMAO local runtime and private workspace records
 /.openmao/
