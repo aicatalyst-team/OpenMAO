@@ -6,9 +6,9 @@ All notable public release changes for OpenMAO are documented here.
 
 No unreleased changes.
 
-## v0.5.0-rc.1 - 2026-05-30
+## v0.5.0 - 2026-05-30
 
-Release candidate making institutional memory compound: knowledge accumulates with evidence and becomes reusable.
+Makes institutional memory compound: knowledge accumulates with evidence and becomes reusable.
 
 ### Added
 
