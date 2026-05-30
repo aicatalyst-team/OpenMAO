@@ -1,6 +1,7 @@
 import {
   type Agent,
   AgentSchema,
+  AutonomyCaseSchema,
   type Organization,
   OrganizationSchema,
   type Role,
@@ -70,6 +71,7 @@ export class OrganizationStore {
       workspace_id: string;
       expected_level: Organization["autonomy_level"];
       next_level: Organization["autonomy_level"];
+      ratified_case_id?: string | null;
     },
   ): Organization {
     return this.database.transaction(() => {
@@ -84,13 +86,23 @@ export class OrganizationStore {
           `organization ${organizationId} is at autonomy '${current.autonomy_level}', expected '${input.expected_level}'`,
         );
       }
-      // Skip-level widening is forbidden even on this low-level CAS: a widen may advance only one
-      // rung (the service still requires a ratified case). Narrowing may move any distance — safe.
       const expectedIndex = AUTONOMY_LADDER.indexOf(input.expected_level);
       const nextIndex = AUTONOMY_LADDER.indexOf(input.next_level);
-      if (nextIndex > expectedIndex + 1) {
-        throw new AutonomyTransitionConflictError(
-          `autonomy may only widen one step at a time: '${input.expected_level}' → '${input.next_level}'`,
+      if (nextIndex > expectedIndex) {
+        // Widening is never silent and never skips: it may advance only one rung AND must be backed
+        // by a matching RATIFIED autonomy case. This makes ratification the only path that widens the
+        // dial, even at the store layer. Narrowing (the safe direction) needs neither.
+        if (nextIndex > expectedIndex + 1) {
+          throw new AutonomyTransitionConflictError(
+            `autonomy may only widen one step at a time: '${input.expected_level}' → '${input.next_level}'`,
+          );
+        }
+        this.assertRatifiedCaseJustifies(
+          input.ratified_case_id ?? null,
+          organizationId,
+          input.workspace_id,
+          input.expected_level,
+          input.next_level,
         );
       }
       if (input.next_level === input.expected_level) {
@@ -102,6 +114,37 @@ export class OrganizationStore {
         .run(dumpJson(updated), updated.id, input.workspace_id);
       return updated;
     });
+  }
+
+  private assertRatifiedCaseJustifies(
+    caseId: string | null,
+    orgId: string,
+    workspaceId: string,
+    from: Organization["autonomy_level"],
+    to: Organization["autonomy_level"],
+  ): void {
+    if (!caseId) {
+      throw new AutonomyTransitionConflictError(
+        "widening autonomy requires a ratified case — the dial only widens through ratification",
+      );
+    }
+    const row = this.database.connection
+      .prepare(
+        `SELECT payload_json FROM autonomy_cases
+         WHERE id = ? AND workspace_id = ? AND org_id = ? AND status = 'ratified'`,
+      )
+      .get(caseId, workspaceId, orgId) as PayloadRow | undefined;
+    if (!row) {
+      throw new AutonomyTransitionConflictError(
+        `no ratified autonomy case justifies this widening: ${caseId}`,
+      );
+    }
+    const autonomyCase = AutonomyCaseSchema.parse(JSON.parse(row.payload_json));
+    if (autonomyCase.current_level !== from || autonomyCase.proposed_level !== to) {
+      throw new AutonomyTransitionConflictError(
+        `ratified case ${caseId} does not justify '${from}' → '${to}'`,
+      );
+    }
   }
 }
 

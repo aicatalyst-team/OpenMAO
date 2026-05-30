@@ -199,14 +199,18 @@ export class AutonomyService {
       }
 
       const at = input.at ?? utcNow();
+      // Mark the case ratified FIRST, then widen with that case as proof. The store only widens when
+      // a matching ratified case exists, so ratification is the sole widening path — even at the
+      // store layer. If the widen fails, the whole transaction (including the ratify) rolls back.
+      const ratified = this.cases.setStatus(caseId, "ratified", {
+        ratified_by: ratifier,
+        resolved_at: at,
+      });
       const updatedOrg = this.orgs.setAutonomyLevel(autonomyCase.org_id, {
         workspace_id: input.workspace_id,
         expected_level: org.autonomy_level,
         next_level: proposedLevel,
-      });
-      const ratified = this.cases.setStatus(caseId, "ratified", {
-        ratified_by: ratifier,
-        resolved_at: at,
+        ratified_case_id: caseId,
       });
       this.events.append({
         workspace_id: input.workspace_id,

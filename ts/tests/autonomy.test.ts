@@ -74,7 +74,7 @@ function seedVerifiedApplications(workspaceId: string, count: number): void {
         created_at: at,
       }),
     );
-    applications.create(
+    const application = applications.create(
       OrgChangeApplicationSchema.parse({
         id: newId("application"),
         workspace_id: workspaceId,
@@ -83,11 +83,11 @@ function seedVerifiedApplications(workspaceId: string, count: number): void {
         applied_by: "operator",
         reversible: true,
         targets: [],
-        status: "verified",
+        status: "applied",
         created_at: at,
-        verified_at: at,
       }),
     );
+    applications.setStatus(application.id, "verified", { verified_at: at });
   }
 }
 
@@ -340,7 +340,7 @@ describe("M4 earned autonomy", () => {
 
   it("refuses to ratify a stale case after the dial moved", async () => {
     const workspaceId = await seedWorkspace();
-    seedOrg(workspaceId, "advisory");
+    seedOrg(workspaceId, "supervised");
     seedVerifiedApplications(workspaceId, 1);
     const service = new AutonomyService(database, { minTrackRecord: 1 });
     const proposed = service.proposeWidening({
@@ -351,16 +351,33 @@ describe("M4 earned autonomy", () => {
       evidence,
     });
 
-    // The dial moves out from under the case (e.g. another widening landed first).
-    new OrganizationStore(database).setAutonomyLevel(ORG_ID, {
+    // The dial moves out from under the case — an operator narrows it (the safe, case-free path).
+    service.narrow({
       workspace_id: workspaceId,
-      expected_level: "advisory",
-      next_level: "supervised",
+      org_id: ORG_ID,
+      to_level: "advisory",
+      actor: "operator",
     });
 
+    // The case proposed supervised → bounded, but the only valid widening from the live level
+    // (advisory) is → supervised, so ratification is rejected.
     expect(() =>
       service.ratifyWidening(proposed.id, { workspace_id: workspaceId, actor: "operator" }),
     ).toThrow(AutonomyServiceError);
+  });
+
+  it("widening is unreachable at the store layer without a ratified case", async () => {
+    const workspaceId = await seedWorkspace();
+    seedOrg(workspaceId, "advisory");
+    // A direct one-step widen on the store CAS, with no ratified case, is refused.
+    expect(() =>
+      new OrganizationStore(database).setAutonomyLevel(ORG_ID, {
+        workspace_id: workspaceId,
+        expected_level: "advisory",
+        next_level: "supervised",
+      }),
+    ).toThrow();
+    expect(orgLevel()).toBe("advisory");
   });
 
   it("narrows (tightens) without a case — the safe direction", async () => {
