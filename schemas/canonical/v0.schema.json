@@ -243,6 +243,70 @@
             "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
           },
           "default": []
+        },
+        "actor_ref": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "actor_type": {
+                  "type": "string",
+                  "enum": [
+                    "agent",
+                    "worker",
+                    "operator",
+                    "system",
+                    "provider"
+                  ]
+                },
+                "actor_id": {
+                  "type": "string"
+                },
+                "display_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "default": null
+                }
+              },
+              "required": [
+                "actor_type",
+                "actor_id"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "produced_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "consumed_refs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "causal_parent_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "additionalProperties": false
@@ -2398,6 +2462,70 @@
                 "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
               },
               "default": []
+            },
+            "actor_ref": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "actor_type": {
+                      "type": "string",
+                      "enum": [
+                        "agent",
+                        "worker",
+                        "operator",
+                        "system",
+                        "provider"
+                      ]
+                    },
+                    "actor_id": {
+                      "type": "string"
+                    },
+                    "display_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null
+                    }
+                  },
+                  "required": [
+                    "actor_type",
+                    "actor_id"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "produced_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "consumed_refs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": []
+            },
+            "causal_parent_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
             }
           },
           "additionalProperties": false,
