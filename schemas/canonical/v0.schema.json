@@ -340,6 +340,35 @@
         "other"
       ]
     },
+    "OrgChangeTargetState": {
+      "type": "object",
+      "properties": {
+        "ref": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "before_status": {
+          "type": "string"
+        },
+        "after_status": {
+          "type": "string"
+        },
+        "before_hash": {
+          "type": "string"
+        },
+        "after_hash": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "before_status",
+        "after_status",
+        "before_hash",
+        "after_hash"
+      ],
+      "additionalProperties": false
+    },
     "CollectiveMemorySummary": {
       "type": "object",
       "properties": {
@@ -2969,6 +2998,155 @@
         "change_type",
         "rationale",
         "created_at"
+      ],
+      "additionalProperties": false
+    },
+    "OrgChangeApplication": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "workspace_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "proposal_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "change_type": {
+          "type": "string"
+        },
+        "applied_by": {
+          "type": "string"
+        },
+        "reversible": {
+          "type": "boolean",
+          "default": true
+        },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "ref": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+              },
+              "before_status": {
+                "type": "string"
+              },
+              "after_status": {
+                "type": "string"
+              },
+              "before_hash": {
+                "type": "string"
+              },
+              "after_hash": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "ref",
+              "before_status",
+              "after_status",
+              "before_hash",
+              "after_hash"
+            ],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "applied",
+            "verified",
+            "reverted"
+          ],
+          "default": "applied"
+        },
+        "failure_reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|\\+00:00)$"
+        },
+        "verified_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|\\+00:00)$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reverted_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|\\+00:00)$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "workspace_id",
+        "proposal_id",
+        "change_type",
+        "applied_by",
+        "created_at"
+      ],
+      "additionalProperties": false
+    },
+    "OrgControlState": {
+      "type": "object",
+      "properties": {
+        "workspace_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "apply_paused": {
+          "type": "boolean",
+          "default": false
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "updated_by": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "updated_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|\\+00:00)$"
+        }
+      },
+      "required": [
+        "workspace_id",
+        "updated_at"
       ],
       "additionalProperties": false
     },

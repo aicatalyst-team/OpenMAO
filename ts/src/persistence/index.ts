@@ -33,6 +33,7 @@ export {
   CorroborationConflictError,
   CorroborationStore,
   MemoryEntryConflictError,
+  MemoryEntryStatusConflictError,
   MemoryEntryStore,
   PromotionCandidateConflictError,
   PromotionCandidateStore,
@@ -53,10 +54,13 @@ export {
   RoleStore,
 } from "./org.js";
 export {
+  OrgChangeApplicationError,
+  OrgChangeApplicationStore,
   OrgChangeProposalError,
   OrgChangeProposalStore,
   type OrgChangeStatus,
 } from "./org-changes.js";
+export { OrgControlStore } from "./org-control.js";
 export {
   ActiveRunExistsError,
   InvalidRunTransitionError,
