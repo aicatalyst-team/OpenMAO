@@ -657,23 +657,51 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       // The heartbeat daemon: beat on a cadence and deliver digests. Bounded by default (one beat,
       // safe for scripts); `--daemon` runs until the process is stopped, `--beats n` runs n beats.
       const intervalSeconds = Number(optionValue(args, "--interval") ?? 3600);
-      const limit = args.includes("--daemon")
-        ? Number.POSITIVE_INFINITY
-        : Number(optionValue(args, "--beats") ?? 1);
+      if (!Number.isInteger(intervalSeconds) || intervalSeconds <= 0) {
+        throw new Error("--interval must be a positive integer number of seconds");
+      }
+      const daemon = args.includes("--daemon");
+      let limit = Number.POSITIVE_INFINITY;
+      if (!daemon) {
+        limit = Number(optionValue(args, "--beats") ?? 1);
+        if (!Number.isInteger(limit) || limit <= 0) {
+          throw new Error("--beats must be a positive integer");
+        }
+      }
+      // Graceful shutdown: a daemon stops at the next beat boundary on SIGINT/SIGTERM, letting the
+      // in-flight beat's transaction finish before the database is closed.
+      let stopped = false;
+      const stop = (): void => {
+        stopped = true;
+      };
+      if (daemon) {
+        process.once("SIGINT", stop);
+        process.once("SIGTERM", stop);
+      }
       let count = 0;
-      const beats = await new HeartbeatService(database, {
-        transport: new ConsoleTransport((line) => write(`${line}\n`)),
-      }).run({
-        workspace_id: selectedWorkspace,
-        interval_seconds: intervalSeconds,
-        clock: () => utcNow(),
-        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-        shouldStop: () => count >= limit,
-        onBeat: () => {
-          count += 1;
-        },
-      });
-      printJson(write, { workspace_id: selectedWorkspace, beats });
+      try {
+        const beats = await new HeartbeatService(database, {
+          transport: new ConsoleTransport((line) => write(`${line}\n`)),
+        }).run({
+          workspace_id: selectedWorkspace,
+          interval_seconds: intervalSeconds,
+          clock: () => utcNow(),
+          sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+          shouldStop: () => stopped || count >= limit,
+          onBeat: () => {
+            count += 1;
+          },
+          onError: (error) => {
+            write(
+              `heartbeat beat failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          },
+        });
+        printJson(write, { workspace_id: selectedWorkspace, beats });
+      } finally {
+        process.removeListener("SIGINT", stop);
+        process.removeListener("SIGTERM", stop);
+      }
       return 0;
     }
     if (command === "cos" && subcommand === "inbox") {

@@ -43,15 +43,24 @@ export class RecordingTransport implements OutboundTransport {
   }
 }
 
+// Per-notification summary length cap: the count cap alone doesn't bound size, so a few pathological
+// summaries can't blow up the digest. Belt-and-suspenders with the count cap in HeartbeatService.
+const MAX_SUMMARY_LENGTH = 240;
+
 export function formatDigest(digest: Digest): string {
   const lines = [`[chief-of-staff digest @ ${digest.at}] ${digest.summary}`];
   for (const notification of digest.notifications) {
-    lines.push(`  - (${notification.severity}) ${notification.kind}: ${notification.summary}`);
+    const summary = truncate(notification.summary, MAX_SUMMARY_LENGTH);
+    lines.push(`  - (${notification.severity}) ${notification.kind}: ${summary}`);
   }
   if (digest.truncated > 0) {
     lines.push(`  …and ${digest.truncated} more held back by the volume cap.`);
   }
   return lines.join("\n");
+}
+
+function truncate(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
 }
 
 function defaultWrite(line: string): void {

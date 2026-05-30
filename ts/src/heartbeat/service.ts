@@ -22,6 +22,7 @@ export type RunOptions = {
   sleep: (ms: number) => Promise<void>;
   shouldStop: () => boolean;
   onBeat?: (result: BeatResult) => void;
+  onError?: (error: unknown, at: string) => void;
 };
 
 /**
@@ -50,87 +51,71 @@ export class HeartbeatService {
 
   /**
    * One heartbeat at recorded time `at`: tick the Chief of Staff, then deliver a digest of the
-   * notifications that beat produced. The decision (tick + events) is transactional and recorded;
-   * physical delivery happens after commit, so a future network transport can fail without
-   * corrupting the log. Idempotent: re-beating at the same `at` re-runs an idempotent tick (no new
-   * notifications) and delivers nothing.
+   * notifications that beat produced — atomically. Delivery runs INSIDE the transaction (right
+   * before the `cos.digest.delivered` event), so the event and the actual delivery commit together
+   * or not at all: the log can never claim a delivery that didn't happen, and a transport throw
+   * rolls the whole beat back (no events, the sensed notifications un-created) so a re-beat genuinely
+   * retries. This requires a synchronous, fast transport; async/network transports that need
+   * at-least-once delivery must sit behind an outbox (deferred). Idempotent: re-beating at the same
+   * committed `at` is a deterministic no-op.
    */
   beat(input: { workspace_id: string; at: string }): BeatResult {
     const workspace_id = input.workspace_id;
     const at = normalizeInstant(input.at);
     const beatKey = `heartbeat:beat:${workspace_id}:${at}`;
-    const prepared = this.database.transaction(
-      (): { result: BeatResult; digest: Digest | null } => {
-        // Idempotent replay: if this instant was already beaten, do nothing and report no new
-        // delivery. The first beat at `at` is authoritative; a re-beat is a deterministic no-op
-        // (re-running the tick would see nothing new, since cadences have already advanced).
-        if (this.events.getByIdempotencyKey(workspace_id, beatKey)) {
-          return {
-            result: { workspace_id, at, notification_count: 0, delivered: false, truncated: 0 },
-            digest: null,
-          };
-        }
-        const tick = this.cos.tick({ workspace_id, at });
-        const newIds = tick.fired.flatMap((entry) => entry.notification_ids);
-        const all = newIds
-          .map((id) => this.cos.getNotification(workspace_id, id))
-          .filter((notification): notification is Notification => notification !== null);
-        const shown = all.slice(0, this.maxPerDigest);
-        const truncated = all.length - shown.length;
+    return this.database.transaction((): BeatResult => {
+      // Idempotent replay: if this instant was already beaten AND committed, do nothing. (A beat
+      // that rolled back left no event, so it is correctly retriable.)
+      if (this.events.getByIdempotencyKey(workspace_id, beatKey)) {
+        return { workspace_id, at, notification_count: 0, delivered: false, truncated: 0 };
+      }
+      const tick = this.cos.tick({ workspace_id, at });
+      const newIds = tick.fired.flatMap((entry) => entry.notification_ids);
+      const all = newIds
+        .map((id) => this.cos.getNotification(workspace_id, id))
+        .filter((notification): notification is Notification => notification !== null);
+      const shown = all.slice(0, this.maxPerDigest);
+      const truncated = all.length - shown.length;
 
-        this.events.append({
-          workspace_id,
-          kind: "heartbeat.beat",
-          actor: ChiefOfStaffService.ACTOR,
-          payload: EventPayloadSchema.parse({
-            data: { at, notification_count: all.length, delivered: all.length > 0 },
-            refs: newIds,
-          }),
-          idempotency_key: `heartbeat:beat:${workspace_id}:${at}`,
-          timestamp: at,
-        });
+      this.events.append({
+        workspace_id,
+        kind: "heartbeat.beat",
+        actor: ChiefOfStaffService.ACTOR,
+        payload: EventPayloadSchema.parse({
+          data: { at, notification_count: all.length, delivered: all.length > 0 },
+          refs: newIds,
+        }),
+        idempotency_key: beatKey,
+        timestamp: at,
+      });
 
-        if (all.length === 0) {
-          return {
-            result: { workspace_id, at, notification_count: 0, delivered: false, truncated: 0 },
-            digest: null,
-          };
-        }
+      if (all.length === 0) {
+        return { workspace_id, at, notification_count: 0, delivered: false, truncated: 0 };
+      }
 
-        const digest: Digest = {
-          workspace_id,
-          at,
-          notifications: shown,
-          truncated,
-          summary: `${all.length} new notification(s)`,
-        };
-        this.events.append({
-          workspace_id,
-          kind: "cos.digest.delivered",
-          actor: ChiefOfStaffService.ACTOR,
-          payload: EventPayloadSchema.parse({
-            data: {
-              at,
-              transport: this.transport.name,
-              notification_count: shown.length,
-              truncated,
-            },
-            refs: shown.map((notification) => notification.id),
-          }),
-          idempotency_key: `heartbeat:digest:${workspace_id}:${at}`,
-          timestamp: at,
-        });
-        return {
-          result: { workspace_id, at, notification_count: all.length, delivered: true, truncated },
-          digest,
-        };
-      },
-    );
-
-    if (prepared.digest) {
-      this.transport.deliver(prepared.digest);
-    }
-    return prepared.result;
+      const digest: Digest = {
+        workspace_id,
+        at,
+        notifications: shown,
+        truncated,
+        summary: `${all.length} new notification(s)`,
+      };
+      // Deliver, then record the delivery — both inside the transaction. If the transport throws,
+      // everything above rolls back and the beat retries on the next pass.
+      this.transport.deliver(digest);
+      this.events.append({
+        workspace_id,
+        kind: "cos.digest.delivered",
+        actor: ChiefOfStaffService.ACTOR,
+        payload: EventPayloadSchema.parse({
+          data: { at, transport: this.transport.name, notification_count: shown.length, truncated },
+          refs: shown.map((notification) => notification.id),
+        }),
+        idempotency_key: `heartbeat:digest:${workspace_id}:${at}`,
+        timestamp: at,
+      });
+      return { workspace_id, at, notification_count: all.length, delivered: true, truncated };
+    });
   }
 
   /**
@@ -141,9 +126,16 @@ export class HeartbeatService {
   async run(options: RunOptions): Promise<number> {
     let beats = 0;
     while (!options.shouldStop()) {
-      const result = this.beat({ workspace_id: options.workspace_id, at: options.clock() });
-      beats += 1;
-      options.onBeat?.(result);
+      const at = options.clock();
+      try {
+        const result = this.beat({ workspace_id: options.workspace_id, at });
+        beats += 1;
+        options.onBeat?.(result);
+      } catch (error) {
+        // A failed beat rolled back atomically. Record it and keep beating rather than crashing the
+        // daemon; the interval sleep below acts as a simple backoff.
+        options.onError?.(error, at);
+      }
       if (options.shouldStop()) {
         break;
       }

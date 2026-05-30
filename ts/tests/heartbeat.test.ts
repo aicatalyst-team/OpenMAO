@@ -5,14 +5,27 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ChiefOfStaffService } from "../src/chief_of_staff/index.js";
+import { runCli } from "../src/cli.js";
 import { MemoryEntrySchema, newId, utcNow, WorkspaceSchema } from "../src/contracts/index.js";
-import { HeartbeatService, RecordingTransport } from "../src/heartbeat/index.js";
+import {
+  type Digest,
+  HeartbeatService,
+  type OutboundTransport,
+  RecordingTransport,
+} from "../src/heartbeat/index.js";
 import {
   Database,
   EventStore,
   MemoryEntryStore,
   WorkspaceStore,
 } from "../src/persistence/index.js";
+
+class ThrowingTransport implements OutboundTransport {
+  readonly name = "throwing";
+  deliver(_digest: Digest): void {
+    throw new Error("delivery failed");
+  }
+}
 
 const fixturePath = new URL("../../tests/fixtures/canonical_v0.json", import.meta.url);
 const T0 = "2026-01-01T00:00:00Z";
@@ -169,5 +182,81 @@ describe("M2 heartbeat", () => {
     expect(kinds.has("org_change.applied")).toBe(false);
     expect(kinds.has("org_change.verified")).toBe(false);
     expect(kinds.has("org_control.apply_paused")).toBe(false);
+  });
+
+  it("rolls the whole beat back when delivery throws, leaving it retriable", async () => {
+    const workspaceId = await seedWorkspace();
+    new ChiefOfStaffService(database).ensureDefaultCadences(workspaceId, T0);
+
+    expect(() =>
+      new HeartbeatService(database, { transport: new ThrowingTransport() }).beat({
+        workspace_id: workspaceId,
+        at: T0,
+      }),
+    ).toThrow("delivery failed");
+
+    // Atomic: nothing from the failed beat persisted — no pulse event, no sensed notifications.
+    expect(eventKinds(workspaceId)).not.toContain("heartbeat.beat");
+    expect(new ChiefOfStaffService(database).listNotifications(workspaceId)).toHaveLength(0);
+
+    // A re-beat with a working transport delivers — the failure was genuinely retriable.
+    const transport = new RecordingTransport();
+    const retried = new HeartbeatService(database, { transport }).beat({
+      workspace_id: workspaceId,
+      at: T0,
+    });
+    expect(retried.delivered).toBe(true);
+    expect(transport.delivered).toHaveLength(1);
+  });
+
+  it("keeps the daemon alive when a beat fails, reporting via onError", async () => {
+    const workspaceId = await seedWorkspace();
+    new ChiefOfStaffService(database).ensureDefaultCadences(workspaceId, T0);
+    const errors: unknown[] = [];
+    const times = [T0, "2026-01-01T01:00:00Z"];
+    let ticks = 0;
+
+    const beats = await new HeartbeatService(database, { transport: new ThrowingTransport() }).run({
+      workspace_id: workspaceId,
+      interval_seconds: 3600,
+      clock: () => times[Math.min(ticks, times.length - 1)] ?? T0,
+      sleep: async () => {
+        ticks += 1;
+      },
+      shouldStop: () => ticks >= times.length,
+      onError: (error) => {
+        errors.push(error);
+      },
+    });
+
+    // Every beat threw (delivery fails), but the loop survived and recorded each failure.
+    expect(beats).toBe(0);
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does nothing when asked to stop before the first beat", async () => {
+    const workspaceId = await seedWorkspace();
+    new ChiefOfStaffService(database).ensureDefaultCadences(workspaceId, T0);
+    const transport = new RecordingTransport();
+
+    const beats = await new HeartbeatService(database, { transport }).run({
+      workspace_id: workspaceId,
+      interval_seconds: 3600,
+      clock: () => T0,
+      sleep: async () => {},
+      shouldStop: () => true,
+    });
+
+    expect(beats).toBe(0);
+    expect(transport.delivered).toHaveLength(0);
+    expect(eventKinds(workspaceId)).not.toContain("heartbeat.beat");
+  });
+
+  it("rejects an invalid --interval or --beats from the CLI", async () => {
+    const dbPath = join(tmpRoot, "cli.sqlite3");
+    await expect(runCli(["cos", "run", "--interval", "0"], { dbPath })).rejects.toThrow(
+      "--interval",
+    );
+    await expect(runCli(["cos", "run", "--beats", "-3"], { dbPath })).rejects.toThrow("--beats");
   });
 });
