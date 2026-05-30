@@ -169,6 +169,15 @@ export class OrgChangeApplicationStore {
     return row ? OrgChangeApplicationSchema.parse(JSON.parse(row.payload_json)) : null;
   }
 
+  listForWorkspace(workspaceId: string): OrgChangeApplication[] {
+    const rows = this.database.connection
+      .prepare(
+        "SELECT payload_json FROM org_change_applications WHERE workspace_id = ? ORDER BY id",
+      )
+      .all(workspaceId) as PayloadRow[];
+    return rows.map((row) => OrgChangeApplicationSchema.parse(JSON.parse(row.payload_json)));
+  }
+
   setStatus(
     applicationId: string,
     status: OrgChangeApplication["status"],

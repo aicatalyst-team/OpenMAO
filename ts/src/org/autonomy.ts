@@ -13,6 +13,7 @@ import {
   type Database,
   EventStore,
   OrganizationStore,
+  OrgChangeApplicationStore,
 } from "../persistence/index.js";
 
 // The autonomy ladder, tightest → widest. A widening moves exactly one step up; narrowing moves down.
@@ -43,6 +44,7 @@ export class AutonomyRatificationError extends AutonomyServiceError {}
 export class AutonomyService {
   private readonly orgs: OrganizationStore;
   private readonly cases: AutonomyCaseStore;
+  private readonly applications: OrgChangeApplicationStore;
   private readonly events: EventStore;
   private readonly maxLevel: AutonomyLevel;
   private readonly minTrackRecord: number;
@@ -53,9 +55,40 @@ export class AutonomyService {
   ) {
     this.orgs = new OrganizationStore(database);
     this.cases = new AutonomyCaseStore(database);
+    this.applications = new OrgChangeApplicationStore(database);
     this.events = new EventStore(database);
     this.maxLevel = options.maxLevel ?? "bounded";
     this.minTrackRecord = options.minTrackRecord ?? DEFAULT_MIN_TRACK_RECORD;
+  }
+
+  // The shared, re-checkable widening preconditions, evaluated against LIVE state. Enforced at BOTH
+  // propose and ratify time so a forged or stale case can never land a widening the live org hasn't
+  // earned: one-step from the current level, under the ceiling, with evidence + an audited track
+  // record. Returns the validated one-step target.
+  private assertWidenable(
+    org: Organization,
+    evidenceCount: number,
+    workspaceId: string,
+  ): AutonomyLevel {
+    const proposedLevel = nextWider(org.autonomy_level);
+    if (!proposedLevel) {
+      throw new AutonomyStepError(`organization ${org.id} is already at the widest autonomy level`);
+    }
+    if (ladderIndex(proposedLevel) > ladderIndex(this.maxLevel)) {
+      throw new AutonomyCapError(
+        `proposed level '${proposedLevel}' exceeds the autonomy ceiling '${this.maxLevel}'`,
+      );
+    }
+    if (evidenceCount === 0) {
+      throw new InsufficientTrackRecordError("widening autonomy requires an evidence packet");
+    }
+    const trackRecord = this.verifiedApplyCount(workspaceId);
+    if (trackRecord < this.minTrackRecord) {
+      throw new InsufficientTrackRecordError(
+        `widening autonomy requires at least ${this.minTrackRecord} verified applies; found ${trackRecord}`,
+      );
+    }
+    return proposedLevel;
   }
 
   /**
@@ -72,41 +105,38 @@ export class AutonomyService {
     at?: string | null;
   }): AutonomyCase {
     return this.database.transaction(() => {
+      const proposedBy = normalizeActor(input.proposed_by, "proposed_by");
       const org = this.requireOrg(input.workspace_id, input.org_id);
-      const currentLevel = org.autonomy_level;
-      const proposedLevel = nextWider(currentLevel);
-      if (!proposedLevel) {
-        throw new AutonomyStepError(
-          `organization ${input.org_id} is already at the widest autonomy level`,
-        );
-      }
-      if (ladderIndex(proposedLevel) > ladderIndex(this.maxLevel)) {
-        throw new AutonomyCapError(
-          `proposed level '${proposedLevel}' exceeds the autonomy ceiling '${this.maxLevel}'`,
-        );
-      }
       const evidence = input.evidence ?? [];
-      if (evidence.length === 0) {
-        throw new InsufficientTrackRecordError("widening autonomy requires an evidence packet");
-      }
-      const trackRecord = this.verifiedApplyCount(input.workspace_id);
-      if (trackRecord < this.minTrackRecord) {
-        throw new InsufficientTrackRecordError(
-          `widening autonomy requires at least ${this.minTrackRecord} verified applies; found ${trackRecord}`,
+      const proposedLevel = this.assertWidenable(org, evidence.length, input.workspace_id);
+
+      // At most one pending widening per org/step — avoid duplicate cases racing to ratify.
+      const duplicate = this.cases
+        .listForWorkspace(input.workspace_id)
+        .find(
+          (existing) =>
+            existing.org_id === input.org_id &&
+            existing.status === "proposed" &&
+            existing.proposed_level === proposedLevel,
+        );
+      if (duplicate) {
+        throw new AutonomyServiceError(
+          `a pending widening to '${proposedLevel}' already exists for organization ${input.org_id}: ${duplicate.id}`,
         );
       }
+
       const at = input.at ?? utcNow();
       const stored = this.cases.save(
         AutonomyCaseSchema.parse({
           id: input.id ?? newId("autonomy"),
           workspace_id: input.workspace_id,
           org_id: input.org_id,
-          current_level: currentLevel,
+          current_level: org.autonomy_level,
           proposed_level: proposedLevel,
           evidence,
           rationale: input.rationale,
           status: "proposed",
-          proposed_by: input.proposed_by,
+          proposed_by: proposedBy,
           created_at: at,
         }),
       );
@@ -115,7 +145,10 @@ export class AutonomyService {
         kind: "autonomy.widening_proposed",
         actor: "autonomy_service",
         payload: EventPayloadSchema.parse({
-          data: { autonomy_case: stored, track_record: trackRecord },
+          data: {
+            autonomy_case: stored,
+            track_record: this.verifiedApplyCount(input.workspace_id),
+          },
           refs: [stored.id, stored.org_id],
         }),
         idempotency_key: `${stored.id}:proposed`,
@@ -134,6 +167,7 @@ export class AutonomyService {
     input: { workspace_id: string; actor: string; at?: string | null },
   ): AutonomyCase {
     return this.database.transaction(() => {
+      const ratifier = normalizeActor(input.actor, "actor");
       const autonomyCase = this.requireCase(input.workspace_id, caseId);
       if (autonomyCase.status !== "proposed") {
         if (autonomyCase.status === "ratified") {
@@ -143,31 +177,47 @@ export class AutonomyService {
           `autonomy case already ${autonomyCase.status}: ${caseId}`,
         );
       }
-      if (autonomyCase.proposed_by === input.actor) {
+      if (normalizeActor(autonomyCase.proposed_by, "proposed_by") === ratifier) {
         throw new AutonomyRatificationError(
-          `autonomy widening must be ratified by someone other than the proposer: ${input.actor}`,
+          `autonomy widening must be ratified by someone other than the proposer: ${ratifier}`,
         );
       }
+
+      // RE-VALIDATE every invariant against LIVE state — never trust the stored case. A forged or
+      // stale case (skip-level, over-cap, thinned-out track record, drifted dial) is rejected here,
+      // so ratification is the only trustworthy widening path regardless of how the case was made.
+      const org = this.requireOrg(input.workspace_id, autonomyCase.org_id);
+      const proposedLevel = this.assertWidenable(
+        org,
+        autonomyCase.evidence.length,
+        input.workspace_id,
+      );
+      if (autonomyCase.proposed_level !== proposedLevel) {
+        throw new AutonomyStepError(
+          `case proposes '${autonomyCase.proposed_level}', but the only valid one-step widening from the live level '${org.autonomy_level}' is '${proposedLevel}'`,
+        );
+      }
+
       const at = input.at ?? utcNow();
       const updatedOrg = this.orgs.setAutonomyLevel(autonomyCase.org_id, {
         workspace_id: input.workspace_id,
-        expected_level: autonomyCase.current_level,
-        next_level: autonomyCase.proposed_level,
+        expected_level: org.autonomy_level,
+        next_level: proposedLevel,
       });
       const ratified = this.cases.setStatus(caseId, "ratified", {
-        ratified_by: input.actor,
+        ratified_by: ratifier,
         resolved_at: at,
       });
       this.events.append({
         workspace_id: input.workspace_id,
         kind: "autonomy.widened",
-        actor: input.actor,
+        actor: ratifier,
         payload: EventPayloadSchema.parse({
           data: {
             autonomy_case: ratified,
             organization: updatedOrg,
-            from: autonomyCase.current_level,
-            to: autonomyCase.proposed_level,
+            from: org.autonomy_level,
+            to: proposedLevel,
           },
           refs: [ratified.id, ratified.org_id],
         }),
@@ -241,12 +291,13 @@ export class AutonomyService {
     });
   }
 
-  // The audited track record: verified org-change applies (successful, post-apply-checked) in the
-  // workspace. Autonomy is earned against this history.
+  // The audited track record: verified OrgChangeApplication *records* (successful, post-apply-checked
+  // applies) in the workspace — NOT raw `org_change.verified` events, which the event log would
+  // accept synthetically. Autonomy is earned against these structured apply artifacts.
   private verifiedApplyCount(workspaceId: string): number {
-    return this.events
+    return this.applications
       .listForWorkspace(workspaceId)
-      .filter((event) => event.kind === "org_change.verified").length;
+      .filter((application) => application.status === "verified").length;
   }
 
   private requireOrg(workspaceId: string, orgId: string): Organization {
@@ -268,6 +319,17 @@ export class AutonomyService {
     }
     return autonomyCase;
   }
+}
+
+// Reject blank/whitespace actor identities and normalize for comparison, so proposer/ratifier
+// separation cannot be bypassed with an empty or padded string. (Canonical authenticated identities
+// from a session are a higher-layer concern; this is the floor.)
+function normalizeActor(value: string, field: string): string {
+  const normalized = value.trim();
+  if (normalized.length === 0) {
+    throw new AutonomyRatificationError(`${field} must be a non-empty actor identity`);
+  }
+  return normalized;
 }
 
 function ladderIndex(level: AutonomyLevel): number {

@@ -11,6 +11,13 @@ import { dumpJson, jsonEqual } from "./serialization.js";
 
 type PayloadRow = { payload_json: string };
 
+// The autonomy ladder, tightest → widest. Used to forbid skip-level widening on the CAS.
+const AUTONOMY_LADDER: ReadonlyArray<Organization["autonomy_level"]> = [
+  "advisory",
+  "supervised",
+  "bounded",
+];
+
 export class OrganizationConflictError extends Error {}
 // Raised when a compare-and-swap autonomy transition finds the org at a different level than
 // expected — the dial drifted since the case was justified, so the widening must not land.
@@ -75,6 +82,15 @@ export class OrganizationStore {
       if (current.autonomy_level !== input.expected_level) {
         throw new AutonomyTransitionConflictError(
           `organization ${organizationId} is at autonomy '${current.autonomy_level}', expected '${input.expected_level}'`,
+        );
+      }
+      // Skip-level widening is forbidden even on this low-level CAS: a widen may advance only one
+      // rung (the service still requires a ratified case). Narrowing may move any distance — safe.
+      const expectedIndex = AUTONOMY_LADDER.indexOf(input.expected_level);
+      const nextIndex = AUTONOMY_LADDER.indexOf(input.next_level);
+      if (nextIndex > expectedIndex + 1) {
+        throw new AutonomyTransitionConflictError(
+          `autonomy may only widen one step at a time: '${input.expected_level}' → '${input.next_level}'`,
         );
       }
       if (input.next_level === input.expected_level) {

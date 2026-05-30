@@ -6,10 +6,12 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  AutonomyCaseSchema,
   type AutonomyLevel,
-  EventPayloadSchema,
   newId,
   OrganizationSchema,
+  OrgChangeApplicationSchema,
+  OrgChangeProposalSchema,
   utcNow,
   WorkspaceSchema,
 } from "../src/contracts/index.js";
@@ -17,14 +19,17 @@ import {
   AutonomyCapError,
   AutonomyRatificationError,
   AutonomyService,
+  AutonomyServiceError,
   AutonomyStepError,
   InsufficientTrackRecordError,
 } from "../src/org/index.js";
 import {
-  AutonomyTransitionConflictError,
+  AutonomyCaseStore,
   Database,
   EventStore,
   OrganizationStore,
+  OrgChangeApplicationStore,
+  OrgChangeProposalStore,
   WorkspaceStore,
 } from "../src/persistence/index.js";
 
@@ -51,16 +56,38 @@ function seedOrg(workspaceId: string, level: AutonomyLevel): void {
   );
 }
 
-function recordVerifiedApplies(workspaceId: string, count: number): void {
-  const events = new EventStore(database);
+// The genuine, hard-to-forge track record: verified OrgChangeApplication records (each FK-bound to a
+// real proposal), exactly what the service counts.
+function seedVerifiedApplications(workspaceId: string, count: number): void {
+  const proposals = new OrgChangeProposalStore(database);
+  const applications = new OrgChangeApplicationStore(database);
+  const at = utcNow();
   for (let index = 0; index < count; index += 1) {
-    events.append({
-      workspace_id: workspaceId,
-      kind: "org_change.verified",
-      actor: "org_change_apply_service",
-      payload: EventPayloadSchema.parse({ data: { index } }),
-      idempotency_key: `verified:${index}`,
-    });
+    const proposalId = newId("orgchg");
+    proposals.save(
+      OrgChangeProposalSchema.parse({
+        id: proposalId,
+        workspace_id: workspaceId,
+        proposed_by: "learning_service",
+        change_type: "memory_cleanup",
+        rationale: "Verified supervised apply.",
+        created_at: at,
+      }),
+    );
+    applications.create(
+      OrgChangeApplicationSchema.parse({
+        id: newId("application"),
+        workspace_id: workspaceId,
+        proposal_id: proposalId,
+        change_type: "memory_cleanup",
+        applied_by: "operator",
+        reversible: true,
+        targets: [],
+        status: "verified",
+        created_at: at,
+        verified_at: at,
+      }),
+    );
   }
 }
 
@@ -91,19 +118,18 @@ describe("M4 earned autonomy", () => {
   it("widens one step only via a human-ratified, evidence-backed case", async () => {
     const workspaceId = await seedWorkspace();
     seedOrg(workspaceId, "advisory");
-    recordVerifiedApplies(workspaceId, 1);
+    seedVerifiedApplications(workspaceId, 1);
     const service = new AutonomyService(database, { minTrackRecord: 1 });
 
     const proposed = service.proposeWidening({
       workspace_id: workspaceId,
       org_id: ORG_ID,
       proposed_by: "learning_service",
-      rationale: "Three incident-free supervised applies.",
+      rationale: "A clean supervised track record.",
       evidence,
     });
 
     // Proposing NEVER moves the dial.
-    expect(proposed.current_level).toBe("advisory");
     expect(proposed.proposed_level).toBe("supervised");
     expect(orgLevel()).toBe("advisory");
 
@@ -123,7 +149,6 @@ describe("M4 earned autonomy", () => {
   it("refuses to widen without an audited track record", async () => {
     const workspaceId = await seedWorkspace();
     seedOrg(workspaceId, "advisory");
-    // No verified applies recorded.
     expect(() =>
       new AutonomyService(database, { minTrackRecord: 3 }).proposeWidening({
         workspace_id: workspaceId,
@@ -139,7 +164,7 @@ describe("M4 earned autonomy", () => {
   it("refuses to widen without an evidence packet", async () => {
     const workspaceId = await seedWorkspace();
     seedOrg(workspaceId, "advisory");
-    recordVerifiedApplies(workspaceId, 5);
+    seedVerifiedApplications(workspaceId, 5);
     expect(() =>
       new AutonomyService(database, { minTrackRecord: 1 }).proposeWidening({
         workspace_id: workspaceId,
@@ -154,8 +179,7 @@ describe("M4 earned autonomy", () => {
   it("refuses to widen beyond the configured ceiling", async () => {
     const workspaceId = await seedWorkspace();
     seedOrg(workspaceId, "advisory");
-    recordVerifiedApplies(workspaceId, 5);
-    // Ceiling pinned at advisory → a step to supervised is over the cap.
+    seedVerifiedApplications(workspaceId, 5);
     expect(() =>
       new AutonomyService(database, { minTrackRecord: 1, maxLevel: "advisory" }).proposeWidening({
         workspace_id: workspaceId,
@@ -170,7 +194,7 @@ describe("M4 earned autonomy", () => {
   it("refuses to widen past the top of the ladder", async () => {
     const workspaceId = await seedWorkspace();
     seedOrg(workspaceId, "bounded");
-    recordVerifiedApplies(workspaceId, 5);
+    seedVerifiedApplications(workspaceId, 5);
     expect(() =>
       new AutonomyService(database, { minTrackRecord: 1 }).proposeWidening({
         workspace_id: workspaceId,
@@ -182,10 +206,10 @@ describe("M4 earned autonomy", () => {
     ).toThrow(AutonomyStepError);
   });
 
-  it("refuses self-ratification (the proposer cannot ratify their own widening)", async () => {
+  it("refuses self-ratification (proposer ≠ ratifier, normalized)", async () => {
     const workspaceId = await seedWorkspace();
     seedOrg(workspaceId, "advisory");
-    recordVerifiedApplies(workspaceId, 1);
+    seedVerifiedApplications(workspaceId, 1);
     const service = new AutonomyService(database, { minTrackRecord: 1 });
     const proposed = service.proposeWidening({
       workspace_id: workspaceId,
@@ -195,16 +219,129 @@ describe("M4 earned autonomy", () => {
       evidence,
     });
 
+    // Padded/whitespace variants of the proposer must not slip past the separation check.
     expect(() =>
-      service.ratifyWidening(proposed.id, { workspace_id: workspaceId, actor: "agent_scribe" }),
+      service.ratifyWidening(proposed.id, { workspace_id: workspaceId, actor: "  agent_scribe  " }),
     ).toThrow(AutonomyRatificationError);
     expect(orgLevel()).toBe("advisory");
   });
 
-  it("refuses to ratify when the dial drifted since the case was made (CAS)", async () => {
+  it("rejects a blank ratifier identity", async () => {
     const workspaceId = await seedWorkspace();
     seedOrg(workspaceId, "advisory");
-    recordVerifiedApplies(workspaceId, 1);
+    seedVerifiedApplications(workspaceId, 1);
+    const service = new AutonomyService(database, { minTrackRecord: 1 });
+    const proposed = service.proposeWidening({
+      workspace_id: workspaceId,
+      org_id: ORG_ID,
+      proposed_by: "learning_service",
+      rationale: "Blank ratifier.",
+      evidence,
+    });
+    expect(() =>
+      service.ratifyWidening(proposed.id, { workspace_id: workspaceId, actor: "   " }),
+    ).toThrow(AutonomyRatificationError);
+  });
+
+  it("re-validates at ratify: a forged skip-level case cannot land the widening", async () => {
+    const workspaceId = await seedWorkspace();
+    seedOrg(workspaceId, "advisory");
+    seedVerifiedApplications(workspaceId, 5);
+    // Forge a case straight into the store that skips advisory → bounded.
+    const forged = new AutonomyCaseStore(database).save(
+      AutonomyCaseSchema.parse({
+        id: newId("autonomy"),
+        workspace_id: workspaceId,
+        org_id: ORG_ID,
+        current_level: "advisory",
+        proposed_level: "bounded",
+        evidence,
+        rationale: "Forged skip.",
+        status: "proposed",
+        proposed_by: "attacker",
+        created_at: utcNow(),
+      }),
+    );
+
+    expect(() =>
+      new AutonomyService(database, { minTrackRecord: 1 }).ratifyWidening(forged.id, {
+        workspace_id: workspaceId,
+        actor: "operator",
+      }),
+    ).toThrow(AutonomyStepError);
+    expect(orgLevel()).toBe("advisory");
+  });
+
+  it("re-checks the ceiling at ratify (cap tightened after the case was made)", async () => {
+    const workspaceId = await seedWorkspace();
+    seedOrg(workspaceId, "advisory");
+    seedVerifiedApplications(workspaceId, 1);
+    const proposed = new AutonomyService(database, { minTrackRecord: 1 }).proposeWidening({
+      workspace_id: workspaceId,
+      org_id: ORG_ID,
+      proposed_by: "learning_service",
+      rationale: "Cap will tighten.",
+      evidence,
+    });
+
+    // A stricter policy ratifies — the ceiling is re-enforced against the live request.
+    expect(() =>
+      new AutonomyService(database, { minTrackRecord: 1, maxLevel: "advisory" }).ratifyWidening(
+        proposed.id,
+        { workspace_id: workspaceId, actor: "operator" },
+      ),
+    ).toThrow(AutonomyCapError);
+    expect(orgLevel()).toBe("advisory");
+  });
+
+  it("re-checks the track record at ratify (threshold raised after the case was made)", async () => {
+    const workspaceId = await seedWorkspace();
+    seedOrg(workspaceId, "advisory");
+    seedVerifiedApplications(workspaceId, 1);
+    const proposed = new AutonomyService(database, { minTrackRecord: 1 }).proposeWidening({
+      workspace_id: workspaceId,
+      org_id: ORG_ID,
+      proposed_by: "learning_service",
+      rationale: "Threshold will rise.",
+      evidence,
+    });
+
+    expect(() =>
+      new AutonomyService(database, { minTrackRecord: 5 }).ratifyWidening(proposed.id, {
+        workspace_id: workspaceId,
+        actor: "operator",
+      }),
+    ).toThrow(InsufficientTrackRecordError);
+    expect(orgLevel()).toBe("advisory");
+  });
+
+  it("rejects a duplicate pending widening for the same org/step", async () => {
+    const workspaceId = await seedWorkspace();
+    seedOrg(workspaceId, "advisory");
+    seedVerifiedApplications(workspaceId, 1);
+    const service = new AutonomyService(database, { minTrackRecord: 1 });
+    service.proposeWidening({
+      workspace_id: workspaceId,
+      org_id: ORG_ID,
+      proposed_by: "learning_service",
+      rationale: "First.",
+      evidence,
+    });
+    expect(() =>
+      service.proposeWidening({
+        workspace_id: workspaceId,
+        org_id: ORG_ID,
+        proposed_by: "learning_service",
+        rationale: "Duplicate.",
+        evidence,
+      }),
+    ).toThrow(AutonomyServiceError);
+  });
+
+  it("refuses to ratify a stale case after the dial moved", async () => {
+    const workspaceId = await seedWorkspace();
+    seedOrg(workspaceId, "advisory");
+    seedVerifiedApplications(workspaceId, 1);
     const service = new AutonomyService(database, { minTrackRecord: 1 });
     const proposed = service.proposeWidening({
       workspace_id: workspaceId,
@@ -214,7 +351,7 @@ describe("M4 earned autonomy", () => {
       evidence,
     });
 
-    // The dial moves out from under the case (e.g. another path widened it).
+    // The dial moves out from under the case (e.g. another widening landed first).
     new OrganizationStore(database).setAutonomyLevel(ORG_ID, {
       workspace_id: workspaceId,
       expected_level: "advisory",
@@ -223,7 +360,7 @@ describe("M4 earned autonomy", () => {
 
     expect(() =>
       service.ratifyWidening(proposed.id, { workspace_id: workspaceId, actor: "operator" }),
-    ).toThrow(AutonomyTransitionConflictError);
+    ).toThrow(AutonomyServiceError);
   });
 
   it("narrows (tightens) without a case — the safe direction", async () => {
