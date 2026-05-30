@@ -1900,6 +1900,56 @@
       ],
       "additionalProperties": false
     },
+    "Corroboration": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "workspace_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "candidate_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "source_memory_entry": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*_[0-9a-f]{32}$"
+        },
+        "corroborated_by": {
+          "type": "string"
+        },
+        "strength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "default": 1
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "created_at": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|\\+00:00)$"
+        }
+      },
+      "required": [
+        "id",
+        "workspace_id",
+        "candidate_id",
+        "source_memory_entry",
+        "corroborated_by",
+        "created_at"
+      ],
+      "additionalProperties": false
+    },
     "Artifact": {
       "type": "object",
       "properties": {

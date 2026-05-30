@@ -404,6 +404,19 @@ export const PromotionCandidateSchema = z
   })
   .strict();
 
+export const CorroborationSchema = z
+  .object({
+    id: CanonicalIdSchema,
+    workspace_id: CanonicalIdSchema,
+    candidate_id: CanonicalIdSchema,
+    source_memory_entry: CanonicalIdSchema,
+    corroborated_by: z.string(),
+    strength: z.number().min(0).max(1).default(1),
+    note: z.string().nullable().default(null),
+    created_at: UtcTimestampSchema,
+  })
+  .strict();
+
 export const ArtifactSchema = z
   .object({
     id: CanonicalIdSchema,
@@ -674,6 +687,7 @@ export const canonicalModelSchemas = {
   CapabilityResult: CapabilityResultSchema,
   MemoryEntry: MemoryEntrySchema,
   PromotionCandidate: PromotionCandidateSchema,
+  Corroboration: CorroborationSchema,
   Artifact: ArtifactSchema,
   Policy: PolicySchema,
   PolicyDecision: PolicyDecisionSchema,
@@ -734,6 +748,7 @@ export type CapabilityCall = z.infer<typeof CapabilityCallSchema>;
 export type CapabilityResult = z.infer<typeof CapabilityResultSchema>;
 export type MemoryEntry = z.infer<typeof MemoryEntrySchema>;
 export type PromotionCandidate = z.infer<typeof PromotionCandidateSchema>;
+export type Corroboration = z.infer<typeof CorroborationSchema>;
 export type Artifact = z.infer<typeof ArtifactSchema>;
 export type Policy = z.infer<typeof PolicySchema>;
 export type PolicyDecision = z.infer<typeof PolicyDecisionSchema>;

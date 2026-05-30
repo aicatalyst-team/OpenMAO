@@ -350,6 +350,19 @@ CREATE TABLE IF NOT EXISTS promotion_candidates (
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
 );
 
+CREATE TABLE IF NOT EXISTS promotion_corroborations (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  candidate_id TEXT NOT NULL,
+  source_memory_entry TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id),
+  FOREIGN KEY (candidate_id) REFERENCES promotion_candidates(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_promotion_corroborations_candidate
+ON promotion_corroborations(candidate_id);
+
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   workspace_id TEXT NOT NULL,
