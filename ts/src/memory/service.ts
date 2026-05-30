@@ -61,7 +61,7 @@ export class PromotionService {
     this.effects = new NodeEffectStore(database);
     this.approvals = new ApprovalStore(database);
     this.corroborations = new CorroborationStore(database);
-    this.minCorroboration = Math.max(0, options.min_corroboration ?? 0);
+    this.minCorroboration = Math.max(0, Math.floor(options.min_corroboration ?? 0));
     this.collectiveMemoryDir =
       options.collective_memory_dir ??
       (database.path === ":memory:"
@@ -162,8 +162,26 @@ export class PromotionService {
       if (!candidate) {
         throw new PromotionServiceError(`promotion candidate not found: ${candidateId}`);
       }
+      if (input.corroboration_id) {
+        const existing = this.corroborations.get(input.corroboration_id);
+        if (existing) {
+          // Idempotent retry: the same corroboration was already recorded.
+          if (
+            existing.candidate_id !== candidateId ||
+            existing.source_memory_entry !== input.source_memory_entry
+          ) {
+            throw new PromotionServiceError(
+              "corroboration id already records a different corroboration",
+            );
+          }
+          return { corroboration: existing, candidate };
+        }
+      }
       if (candidate.status !== "pending") {
         throw new PromotionServiceError("only pending promotion candidates can be corroborated");
+      }
+      if (input.corroborated_by === candidate.proposed_by) {
+        throw new PromotionServiceError("a promotion cannot be corroborated by its proposer");
       }
       if (input.source_memory_entry === candidate.source_memory_entry) {
         throw new PromotionServiceError(
@@ -181,18 +199,29 @@ export class PromotionService {
           "corroborating memory entry does not belong to candidate workspace",
         );
       }
+      if (input.run_id && source.provenance.run_id !== input.run_id) {
+        throw new PromotionServiceError(
+          "run-bound corroboration must match the corroborating memory's provenance run",
+        );
+      }
       if (source.scope !== "individual") {
         throw new PromotionServiceError("corroboration must come from an individual memory entry");
       }
-      if (source.status === "rejected") {
-        throw new PromotionServiceError("a rejected memory entry cannot corroborate a promotion");
+      if (source.status === "rejected" || source.status === "stale") {
+        throw new PromotionServiceError(
+          "a rejected or stale memory entry cannot corroborate a promotion",
+        );
       }
       const alreadyCorroborated = this.corroborations
         .listForCandidate(candidateId)
-        .some((existing) => existing.source_memory_entry === input.source_memory_entry);
+        .some(
+          (existing) =>
+            existing.source_memory_entry === input.source_memory_entry ||
+            existing.corroborated_by === input.corroborated_by,
+        );
       if (alreadyCorroborated) {
         throw new PromotionServiceError(
-          "memory entry has already corroborated this promotion candidate",
+          "this memory entry or actor has already corroborated this promotion candidate",
         );
       }
 

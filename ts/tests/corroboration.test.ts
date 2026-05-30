@@ -27,6 +27,8 @@ const REQUESTED_BY = "agent_55555555555555555555555555555555";
 const APPROVAL_ID = "approval_11111111111111111111111111111111";
 const CORROBORATOR_ID = "mem_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const CORROBORATION_ID = "corrob_11111111111111111111111111111111";
+const CORROBORATOR_ACTOR = "agent_77777777777777777777777777777777";
+const CORROBORATOR_ID_2 = "mem_88888888888888888888888888888888";
 
 let tmpRoot: string;
 let database: Database;
@@ -101,7 +103,7 @@ describe("corroboration-based ratification", () => {
 
     const result = service.recordCorroboration(candidate.id, {
       source_memory_entry: CORROBORATOR_ID,
-      corroborated_by: REQUESTED_BY,
+      corroborated_by: CORROBORATOR_ACTOR,
       run_id: run.id,
       corroboration_id: CORROBORATION_ID,
     });
@@ -148,7 +150,7 @@ describe("corroboration-based ratification", () => {
     expect(() =>
       service.recordCorroboration(candidate.id, {
         source_memory_entry: candidate.source_memory_entry,
-        corroborated_by: REQUESTED_BY,
+        corroborated_by: CORROBORATOR_ACTOR,
         run_id: run.id,
       }),
     ).toThrow(/its own source/);
@@ -168,14 +170,14 @@ describe("corroboration-based ratification", () => {
 
     service.recordCorroboration(candidate.id, {
       source_memory_entry: CORROBORATOR_ID,
-      corroborated_by: REQUESTED_BY,
+      corroborated_by: CORROBORATOR_ACTOR,
       run_id: run.id,
       corroboration_id: CORROBORATION_ID,
     });
     expect(() =>
       service.recordCorroboration(candidate.id, {
         source_memory_entry: CORROBORATOR_ID,
-        corroborated_by: REQUESTED_BY,
+        corroborated_by: CORROBORATOR_ACTOR,
         run_id: run.id,
       }),
     ).toThrow(/already corroborated/);
@@ -196,7 +198,7 @@ describe("corroboration-based ratification", () => {
     expect(() =>
       service.recordCorroboration(candidate.id, {
         source_memory_entry: "mem_ffffffffffffffffffffffffffffffff",
-        corroborated_by: REQUESTED_BY,
+        corroborated_by: CORROBORATOR_ACTOR,
         run_id: run.id,
       }),
     ).toThrow(/not found/);
@@ -223,7 +225,7 @@ describe("corroboration-based ratification", () => {
     expect(() =>
       service.recordCorroboration(candidate.id, {
         source_memory_entry: CORROBORATOR_ID,
-        corroborated_by: REQUESTED_BY,
+        corroborated_by: CORROBORATOR_ACTOR,
         run_id: run.id,
       }),
     ).toThrow(/only pending/);
@@ -253,7 +255,7 @@ describe("corroboration-based ratification", () => {
 
     service.recordCorroboration(candidate.id, {
       source_memory_entry: CORROBORATOR_ID,
-      corroborated_by: REQUESTED_BY,
+      corroborated_by: CORROBORATOR_ACTOR,
       run_id: run.id,
       corroboration_id: CORROBORATION_ID,
     });
@@ -289,10 +291,10 @@ describe("corroboration-based ratification", () => {
     expect(() =>
       service.recordCorroboration(candidate.id, {
         source_memory_entry: "mem_99999999999999999999999999999999",
-        corroborated_by: REQUESTED_BY,
+        corroborated_by: CORROBORATOR_ACTOR,
         run_id: run.id,
       }),
-    ).toThrow(/rejected memory entry cannot corroborate/);
+    ).toThrow(/rejected or stale/);
   });
 
   it("counts actual corroboration rows for the minimum gate, ignoring a pre-set field value", () => {
@@ -322,5 +324,112 @@ describe("corroboration-based ratification", () => {
         resolved_at: "2026-05-27T15:20:12Z",
       }),
     ).toThrow(/at least 1 corroboration/);
+  });
+
+  it("rejects corroboration by the candidate's proposer", () => {
+    const run = seedRunningRun();
+    const service = new PromotionService(database, {
+      collective_memory_dir: join(tmpRoot, "collective_memory"),
+    });
+    const candidate = seedPromotionFixtures(service, run);
+    service.propose(candidate, {
+      requested_by: REQUESTED_BY,
+      run_id: run.id,
+      approval_id: APPROVAL_ID,
+    });
+
+    // proposed_by in the fixture is REQUESTED_BY; a proposer cannot self-corroborate.
+    expect(() =>
+      service.recordCorroboration(candidate.id, {
+        source_memory_entry: CORROBORATOR_ID,
+        corroborated_by: REQUESTED_BY,
+        run_id: run.id,
+      }),
+    ).toThrow(/corroborated by its proposer/);
+  });
+
+  it("rejects a second corroboration from the same actor so the count tracks independent actors", () => {
+    const run = seedRunningRun();
+    const service = new PromotionService(database, {
+      collective_memory_dir: join(tmpRoot, "collective_memory"),
+    });
+    const candidate = seedPromotionFixtures(service, run);
+    const fixture = loadFixture();
+    service.writeIndividual(
+      MemoryEntrySchema.parse({
+        ...(fixture.memory_entry as Record<string, unknown>),
+        id: CORROBORATOR_ID_2,
+        content: "a third, distinct observation",
+      }),
+    );
+    service.propose(candidate, {
+      requested_by: REQUESTED_BY,
+      run_id: run.id,
+      approval_id: APPROVAL_ID,
+    });
+    service.recordCorroboration(candidate.id, {
+      source_memory_entry: CORROBORATOR_ID,
+      corroborated_by: CORROBORATOR_ACTOR,
+      run_id: run.id,
+      corroboration_id: CORROBORATION_ID,
+    });
+
+    // Same actor, different memory: rejected, so the count reflects independent actors.
+    expect(() =>
+      service.recordCorroboration(candidate.id, {
+        source_memory_entry: CORROBORATOR_ID_2,
+        corroborated_by: CORROBORATOR_ACTOR,
+        run_id: run.id,
+      }),
+    ).toThrow(/already corroborated/);
+  });
+
+  it("rejects a run-bound corroboration whose run does not match the corroborating memory", () => {
+    const run = seedRunningRun();
+    const service = new PromotionService(database, {
+      collective_memory_dir: join(tmpRoot, "collective_memory"),
+    });
+    const candidate = seedPromotionFixtures(service, run);
+    service.propose(candidate, {
+      requested_by: REQUESTED_BY,
+      run_id: run.id,
+      approval_id: APPROVAL_ID,
+    });
+
+    expect(() =>
+      service.recordCorroboration(candidate.id, {
+        source_memory_entry: CORROBORATOR_ID,
+        corroborated_by: CORROBORATOR_ACTOR,
+        run_id: "run_00000000000000000000000000000000",
+      }),
+    ).toThrow(/provenance run/);
+  });
+
+  it("is idempotent when retried with the same corroboration id", () => {
+    const run = seedRunningRun();
+    const service = new PromotionService(database, {
+      collective_memory_dir: join(tmpRoot, "collective_memory"),
+    });
+    const candidate = seedPromotionFixtures(service, run);
+    service.propose(candidate, {
+      requested_by: REQUESTED_BY,
+      run_id: run.id,
+      approval_id: APPROVAL_ID,
+    });
+    const first = service.recordCorroboration(candidate.id, {
+      source_memory_entry: CORROBORATOR_ID,
+      corroborated_by: CORROBORATOR_ACTOR,
+      run_id: run.id,
+      corroboration_id: CORROBORATION_ID,
+    });
+    const retry = service.recordCorroboration(candidate.id, {
+      source_memory_entry: CORROBORATOR_ID,
+      corroborated_by: CORROBORATOR_ACTOR,
+      run_id: run.id,
+      corroboration_id: CORROBORATION_ID,
+    });
+
+    expect(retry.corroboration.id).toBe(first.corroboration.id);
+    expect(retry.candidate.corroboration_count).toBe(1);
   });
 });

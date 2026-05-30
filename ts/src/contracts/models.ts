@@ -411,6 +411,7 @@ export const CorroborationSchema = z
     candidate_id: CanonicalIdSchema,
     source_memory_entry: CanonicalIdSchema,
     corroborated_by: z.string(),
+    // Reserved for future confidence weighting; recorded but not yet used in scoring.
     strength: z.number().min(0).max(1).default(1),
     note: z.string().nullable().default(null),
     created_at: UtcTimestampSchema,
