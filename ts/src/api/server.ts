@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   createServer as createHttpServer,
   type IncomingMessage,
@@ -40,7 +40,7 @@ import {
   materializeRejectedCapabilityApproval,
 } from "../runtime/capabilities.js";
 import { openLocalDatabase } from "../runtime/local.js";
-import { safeErrorMessage } from "../security/sensitive-material.js";
+import { SensitiveMaterialError, safeErrorMessage } from "../security/sensitive-material.js";
 import {
   COORDINATOR_AGENT_ID,
   PROMOTION_APPROVAL_ID,
@@ -154,13 +154,25 @@ function headerValue(request: IncomingMessage, name: string): string | null {
   return raw ?? null;
 }
 
+// Constant-time operator-token comparison: hash both sides to a fixed-length digest so neither the
+// token length nor a prefix match is observable through response timing.
+function tokenMatches(provided: string | null, expected: string): boolean {
+  if (provided === null) {
+    return false;
+  }
+  return timingSafeEqual(
+    createHash("sha256").update(provided).digest(),
+    createHash("sha256").update(expected).digest(),
+  );
+}
+
 function requestContext(
   request: IncomingMessage,
   response: ServerResponse,
   url: URL,
   options: Required<Pick<ServerOptions, "operatorToken" | "workspaceId">>,
 ): { actor: string; explicitWorkspace: boolean; workspaceId: string } | null {
-  if (headerValue(request, TOKEN_HEADER) !== options.operatorToken) {
+  if (!tokenMatches(headerValue(request, TOKEN_HEADER), options.operatorToken)) {
     sendJson(response, 403, { error: "forbidden" });
     return null;
   }
@@ -391,17 +403,23 @@ export function createServer(options: ServerOptions = {}) {
           });
           return;
         }
+        // A non-empty idempotency key is required: an empty key would be shared by every keyless
+        // call workspace-wide, causing spurious conflicts or silent deduplication.
+        if (!call.idempotency_key) {
+          sendJson(response, 400, { error: "idempotency_key is required" });
+          return;
+        }
         try {
           const invocation = await createConfiguredCapabilityRegistry(database).invoke(call);
           sendJson(response, 200, invocation);
         } catch (error) {
-          if (error instanceof CapabilityRegistryError) {
-            sendJson(response, 400, {
-              error: safeErrorMessage(error instanceof Error ? error.message : String(error)),
-            });
-            return;
-          }
-          throw error;
+          // Scrub EVERY error (not only CapabilityRegistryError) so a sensitive-material or any other
+          // error can never echo a secret-adjacent string into the response. Registry rejections are
+          // client errors (400); anything else is a server error (500) — still scrubbed.
+          const message = safeErrorMessage(error instanceof Error ? error.message : String(error));
+          const clientError =
+            error instanceof CapabilityRegistryError || error instanceof SensitiveMaterialError;
+          sendJson(response, clientError ? 400 : 500, { error: message });
         }
         return;
       }

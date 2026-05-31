@@ -664,6 +664,14 @@ export class CapabilityRegistryService {
     assertNoSensitiveMaterial(call.input, "input");
     assertNoSensitiveMaterial(call.audit_payload, "audit_payload");
     assertNoSensitiveString(call.idempotency_key, "idempotency_key");
+    // Body-controlled actor strings are persisted and emitted in capability events, so they must
+    // pass the same sensitive-material perimeter as the rest of the call.
+    if (call.external_actor) {
+      assertNoSensitiveString(call.external_actor.actor_id, "external_actor.actor_id");
+      if (call.external_actor.display_name) {
+        assertNoSensitiveString(call.external_actor.display_name, "external_actor.display_name");
+      }
+    }
   }
 
   private approvalIdForCall(call: CapabilityCall): string {

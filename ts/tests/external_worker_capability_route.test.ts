@@ -165,4 +165,30 @@ describe("POST /capability-calls — external-worker capability-initiate route",
     expect(json.error).toBeTruthy();
     expect(json.error).not.toContain(MOCK_SECRET);
   });
+
+  it("rejects body-controlled actor material that looks like a secret (4xx, scrubbed)", async () => {
+    // external_actor.display_name is persisted + emitted, so it must pass the sensitive-material
+    // perimeter. A token-shaped display name is rejected before any record/emit, and the secret-ish
+    // value is never echoed back.
+    // Built at runtime so the literal token shape never appears in tracked source (hygiene check).
+    const tokenShaped = `ghp_${"a".repeat(36)}`;
+    const { status, json } = await postCall(
+      withinEnvelopeCall({
+        external_actor: {
+          actor_type: "worker",
+          actor_id: REFERENCE_WORKER_ID,
+          display_name: tokenShaped,
+        },
+        idempotency_key: "http-test:sensitive-actor",
+      }),
+    );
+    expect(status).toBe(400);
+    expect(JSON.stringify(json)).not.toContain(tokenShaped);
+  });
+
+  it("rejects a call with an empty idempotency key (400)", async () => {
+    const { status, json } = await postCall(withinEnvelopeCall({ idempotency_key: "" }));
+    expect(status).toBe(400);
+    expect(json.error).toContain("idempotency_key");
+  });
 });
