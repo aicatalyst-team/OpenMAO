@@ -434,8 +434,12 @@ export class CapabilityRegistryService {
       if (!allowed || allowed.length === 0) {
         return `Capability '${call.capability_name}' requires a bounded resource grant for '${field}'.`;
       }
+      // Strict string match — never coerce. A non-string resource value (array, object with a
+      // crafted toString, number) is blocked, so e.g. `repo: ["OpenMAO"]` cannot stringify to a
+      // granted value while the provider reads the array differently. Resource grants are
+      // string-valued by design.
       const value = call.input[field];
-      if (value === undefined || value === null || !allowed.includes(String(value))) {
+      if (typeof value !== "string" || !allowed.includes(value)) {
         return `Capability call resource '${field}' is outside the bounded envelope's grant.`;
       }
     }

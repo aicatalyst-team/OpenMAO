@@ -42,12 +42,14 @@ beforeEach(() => {
       workspace_id: WORKSPACE_ID,
       description: "A scoped side effect for testing resource grants.",
       tool_name: "mock.side_effect",
+      // `repo` is intentionally left unconstrained (additionalProperties) so the resource-scope
+      // strict-string guard — not the input schema — is what rejects a non-string repo value.
       canonical_input_schema: {
         type: "object",
         required: [],
+        additionalProperties: true,
         properties: {
           owner: { type: "string" },
-          repo: { type: "string" },
           message: { type: "string" },
         },
       },
@@ -188,6 +190,14 @@ describe("scoped resource grants", () => {
   it("blocks a call that omits the scoped resource entirely", async () => {
     const { taskId, runId } = seedEnvelope({ [CAP]: { owner: ["aeonbilal"], repo: ["OpenMAO"] } });
     const outcome = await outcomeFor(taskId, runId, { message: "no resource specified" });
+    expect(outcome).toBe("block");
+  });
+
+  it("does not let a non-string (array) resource value coerce past the grant", async () => {
+    const { taskId, runId } = seedEnvelope({ [CAP]: { owner: ["aeonbilal"], repo: ["OpenMAO"] } });
+    // `repo: ["OpenMAO"]` would String()-coerce to "OpenMAO" and slip past a loose check — strict
+    // string matching blocks it so the provider can't read the array differently.
+    const outcome = await outcomeFor(taskId, runId, { owner: "aeonbilal", repo: ["OpenMAO"] });
     expect(outcome).toBe("block");
   });
 });
