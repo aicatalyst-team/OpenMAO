@@ -5,8 +5,9 @@ import {
   type ServerResponse,
 } from "node:http";
 
+import { CapabilityRegistryError } from "../capabilities/index.js";
 import { ChiefOfStaffService } from "../chief_of_staff/index.js";
-import { utcNow } from "../contracts/index.js";
+import { type CapabilityCall, CapabilityCallSchema, newId, utcNow } from "../contracts/index.js";
 import { ApprovalService } from "../governance/index.js";
 import { IngestionService } from "../ingestion/index.js";
 import { LearningService } from "../learning/index.js";
@@ -39,6 +40,7 @@ import {
   materializeRejectedCapabilityApproval,
 } from "../runtime/capabilities.js";
 import { openLocalDatabase } from "../runtime/local.js";
+import { safeErrorMessage } from "../security/sensitive-material.js";
 import {
   COORDINATOR_AGENT_ID,
   PROMOTION_APPROVAL_ID,
@@ -79,6 +81,12 @@ function sendHtml(response: ServerResponse, html: string): void {
 
 function sendNotFound(response: ServerResponse): void {
   sendJson(response, 404, { error: "not_found" });
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function routePattern(pathname: string): {
@@ -341,6 +349,60 @@ export function createServer(options: ServerOptions = {}) {
           200,
           new CapabilityCallStore(database).listForWorkspace(context.workspaceId),
         );
+        return;
+      }
+      // The one out-of-process capability-INITIATE primitive: an external worker submits a
+      // CapabilityCall for gating. The route is deliberately thin — it forces the call's workspace
+      // to the authenticated one and otherwise routes the call UNCHANGED through
+      // CapabilityRegistryService.invoke(), which is the single enforcement point (task-envelope
+      // scope, worker grant, credential-handle binding, side-effect/approval gate, idempotent
+      // at-most-once execution). A hostile body cannot escape those bounds; see ADR 0003.
+      if (request.method === "POST" && url.pathname === "/capability-calls") {
+        if (!requireUnambiguousWriteWorkspace(response, database, context)) {
+          return;
+        }
+        const body = await readJsonBody(request);
+        const externalActor = body.external_actor;
+        let call: CapabilityCall;
+        try {
+          call = CapabilityCallSchema.parse({
+            id: typeof body.id === "string" ? body.id : newId("call"),
+            workspace_id: context.workspaceId,
+            run_id: String(body.run_id ?? ""),
+            capability_name: String(body.capability_name ?? ""),
+            provider: String(body.provider ?? ""),
+            input: asRecord(body.input),
+            requested_by: String(body.requested_by ?? ""),
+            external_actor:
+              externalActor && typeof externalActor === "object" && !Array.isArray(externalActor)
+                ? externalActor
+                : null,
+            task_id: String(body.task_id ?? ""),
+            credential_handle:
+              typeof body.credential_handle === "string" ? body.credential_handle : null,
+            side_effecting: body.side_effecting === true,
+            audit_payload: asRecord(body.audit_payload),
+            risk_level: typeof body.risk_level === "string" ? body.risk_level : "low",
+            idempotency_key: String(body.idempotency_key ?? ""),
+          });
+        } catch (error) {
+          sendJson(response, 400, {
+            error: safeErrorMessage(error instanceof Error ? error.message : String(error)),
+          });
+          return;
+        }
+        try {
+          const invocation = await createConfiguredCapabilityRegistry(database).invoke(call);
+          sendJson(response, 200, invocation);
+        } catch (error) {
+          if (error instanceof CapabilityRegistryError) {
+            sendJson(response, 400, {
+              error: safeErrorMessage(error instanceof Error ? error.message : String(error)),
+            });
+            return;
+          }
+          throw error;
+        }
         return;
       }
       if (request.method === "GET" && url.pathname === "/capability-results") {
