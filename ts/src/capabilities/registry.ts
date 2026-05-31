@@ -314,6 +314,10 @@ export class CapabilityRegistryService {
     if (gatewayBlockReason) {
       return this.policyBlock(call, gatewayBlockReason);
     }
+    const resourceScopeBlockReason = this.resourceScopeBlockReason(call, capability);
+    if (resourceScopeBlockReason) {
+      return this.policyBlock(call, resourceScopeBlockReason);
+    }
     if (call.external_actor?.actor_type === "worker") {
       return this.decideWorkerCapability(call, capability);
     }
@@ -410,6 +414,30 @@ export class CapabilityRegistryService {
     }
     if (!task.allowed_capabilities.includes(call.capability_name)) {
       return `Capability is not allowed by the task envelope: ${call.capability_name}.`;
+    }
+    return null;
+  }
+
+  // Enforce per-resource scope: a capability that declares `resource_fields` may act only on a
+  // resource the bounded envelope explicitly granted. Default-deny — a declared resource field with
+  // no grant, or a value outside the grant, is blocked before execution. Capabilities with no
+  // declared resource fields (e.g. the mock providers) are unaffected. The resource value is never
+  // echoed in the block reason.
+  private resourceScopeBlockReason(call: CapabilityCall, capability: Capability): string | null {
+    if (capability.resource_fields.length === 0) {
+      return null;
+    }
+    const task = this.tasks.get(call.task_id);
+    const grants = task?.resource_grants[call.capability_name] ?? {};
+    for (const field of capability.resource_fields) {
+      const allowed = grants[field];
+      if (!allowed || allowed.length === 0) {
+        return `Capability '${call.capability_name}' requires a bounded resource grant for '${field}'.`;
+      }
+      const value = call.input[field];
+      if (value === undefined || value === null || !allowed.includes(String(value))) {
+        return `Capability call resource '${field}' is outside the bounded envelope's grant.`;
+      }
     }
     return null;
   }

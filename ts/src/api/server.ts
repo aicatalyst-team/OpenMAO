@@ -7,7 +7,13 @@ import {
 
 import { CapabilityRegistryError } from "../capabilities/index.js";
 import { ChiefOfStaffService } from "../chief_of_staff/index.js";
-import { type CapabilityCall, CapabilityCallSchema, newId, utcNow } from "../contracts/index.js";
+import {
+  type CapabilityCall,
+  CapabilityCallSchema,
+  newId,
+  type ResourceGrants,
+  utcNow,
+} from "../contracts/index.js";
 import { ApprovalService } from "../governance/index.js";
 import { IngestionService } from "../ingestion/index.js";
 import { LearningService } from "../learning/index.js";
@@ -780,6 +786,12 @@ export function createServer(options: ServerOptions = {}) {
             worker_id: String(body.worker_id ?? ""),
             issued_by: { actor_type: "operator", actor_id: context.actor, display_name: null },
             allowed_capabilities: stringArray(body.allowed_capabilities),
+            resource_grants:
+              body.resource_grants &&
+              typeof body.resource_grants === "object" &&
+              !Array.isArray(body.resource_grants)
+                ? (body.resource_grants as ResourceGrants)
+                : null,
             input:
               input && typeof input === "object" && !Array.isArray(input)
                 ? (input as Record<string, unknown>)
