@@ -462,10 +462,29 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_workspace
 ON notifications(workspace_id, created_at, id);
 
-INSERT OR IGNORE INTO schema_version (version, applied_at)
-VALUES (6, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+-- Per-worker authentication tokens. Only the SHA-256 of the token is stored; the plaintext is
+-- shown once at mint time. A worker token authenticates a worker principal (worker_id + workspace)
+-- to the loopback API with strictly fewer rights than the operator token.
+CREATE TABLE IF NOT EXISTS worker_credentials (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  worker_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
+);
 
-PRAGMA user_version = 6;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_credentials_token_hash
+ON worker_credentials(token_hash);
+
+CREATE INDEX IF NOT EXISTS idx_worker_credentials_worker
+ON worker_credentials(workspace_id, worker_id);
+
+INSERT OR IGNORE INTO schema_version (version, applied_at)
+VALUES (7, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+
+PRAGMA user_version = 7;
 `;
 
 export function initializeSchema(connection: SqliteDatabase): void {

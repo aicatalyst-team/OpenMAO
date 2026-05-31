@@ -47,6 +47,7 @@ import {
 } from "../runtime/capabilities.js";
 import { openLocalDatabase } from "../runtime/local.js";
 import { SensitiveMaterialError, safeErrorMessage } from "../security/sensitive-material.js";
+import { WorkerAuthService } from "../security/worker-auth.js";
 import {
   COORDINATOR_AGENT_ID,
   PROMOTION_APPROVAL_ID,
@@ -70,6 +71,7 @@ type ServerOptions = {
 
 const DEFAULT_HTTP_HOST = "127.0.0.1";
 const TOKEN_HEADER = "x-openmao-operator-token";
+const WORKER_TOKEN_HEADER = "x-openmao-worker-token";
 const ACTOR_HEADER = "x-openmao-actor";
 const WORKSPACE_HEADER = "x-openmao-workspace";
 const LEGACY_WORKSPACE_HEADER = "x-openmao-workspace-id";
@@ -172,32 +174,72 @@ function tokenMatches(provided: string | null, expected: string): boolean {
   );
 }
 
+type Principal = { kind: "operator" } | { kind: "worker"; workerId: string };
+
+type RequestContext = {
+  actor: string;
+  explicitWorkspace: boolean;
+  workspaceId: string;
+  principal: Principal;
+};
+
+// A worker token is permitted ONLY these routes; everything else (envelope issuance, approvals, and
+// every admin/read-all route) requires the operator token. Default-deny for workers.
+function isWorkerAllowed(method: string, pathname: string): boolean {
+  if (method === "GET") {
+    return (
+      pathname === "/workspaces/current" ||
+      pathname === "/capability-calls" ||
+      pathname === "/capability-results" ||
+      /^\/work\/[^/]+\/envelopes$/.test(pathname)
+    );
+  }
+  if (method === "POST") {
+    return pathname === "/capability-calls" || /^\/work\/[^/]+\/outcomes$/.test(pathname);
+  }
+  return false;
+}
+
 function requestContext(
   request: IncomingMessage,
   response: ServerResponse,
   url: URL,
   options: Required<Pick<ServerOptions, "operatorToken" | "workspaceId">>,
-): { actor: string; explicitWorkspace: boolean; workspaceId: string } | null {
-  if (!tokenMatches(headerValue(request, TOKEN_HEADER), options.operatorToken)) {
-    sendJson(response, 403, { error: "forbidden" });
-    return null;
+  database: Database,
+): RequestContext | null {
+  // Operator token → full authority. Actor + workspace come from headers as before.
+  if (tokenMatches(headerValue(request, TOKEN_HEADER), options.operatorToken)) {
+    const actor = headerValue(request, ACTOR_HEADER);
+    if (!actor) {
+      sendJson(response, 400, { error: "missing_actor" });
+      return null;
+    }
+    const selectedWorkspace =
+      headerValue(request, WORKSPACE_HEADER) ??
+      headerValue(request, LEGACY_WORKSPACE_HEADER) ??
+      url.searchParams.get("workspace_id");
+    return {
+      actor,
+      workspaceId: selectedWorkspace ?? options.workspaceId,
+      explicitWorkspace: selectedWorkspace !== null,
+      principal: { kind: "operator" },
+    };
   }
-
-  const actor = headerValue(request, ACTOR_HEADER);
-  if (!actor) {
-    sendJson(response, 400, { error: "missing_actor" });
-    return null;
+  // Worker token → a scoped principal. The actor and workspace are FORCED to the resolved worker; a
+  // worker can never spoof another identity or workspace through headers.
+  const workerPrincipal = new WorkerAuthService(database).resolve(
+    headerValue(request, WORKER_TOKEN_HEADER),
+  );
+  if (workerPrincipal) {
+    return {
+      actor: workerPrincipal.worker_id,
+      workspaceId: workerPrincipal.workspace_id,
+      explicitWorkspace: true,
+      principal: { kind: "worker", workerId: workerPrincipal.worker_id },
+    };
   }
-
-  const selectedWorkspace =
-    headerValue(request, WORKSPACE_HEADER) ??
-    headerValue(request, LEGACY_WORKSPACE_HEADER) ??
-    url.searchParams.get("workspace_id");
-  return {
-    actor,
-    workspaceId: selectedWorkspace ?? options.workspaceId,
-    explicitWorkspace: selectedWorkspace !== null,
-  };
+  sendJson(response, 403, { error: "forbidden" });
+  return null;
 }
 
 function requireDemoWorkspace(
@@ -303,8 +345,18 @@ export function createServer(options: ServerOptions = {}) {
         return;
       }
 
-      const context = requestContext(request, response, url, resolvedOptions);
+      const context = requestContext(request, response, url, resolvedOptions, database);
       if (!context) {
+        return;
+      }
+      // Default-deny: a worker token may reach only its allowlisted routes. This is what makes
+      // envelope issuance, approvals, and every admin route operator-only — so a worker can never
+      // issue itself a wider envelope or approve its own calls (see ADR 0005).
+      if (
+        context.principal.kind === "worker" &&
+        !isWorkerAllowed(request.method ?? "", url.pathname)
+      ) {
+        sendJson(response, 403, { error: "worker_forbidden" });
         return;
       }
 
@@ -381,6 +433,10 @@ export function createServer(options: ServerOptions = {}) {
         }
         const body = await readJsonBody(request);
         const externalActor = body.external_actor;
+        // A worker principal can only act AS ITSELF — its identity is forced from the authenticated
+        // token, never taken from the body, so it cannot impersonate another worker.
+        const callerWorkerId =
+          context.principal.kind === "worker" ? context.principal.workerId : null;
         let call: CapabilityCall;
         try {
           call = CapabilityCallSchema.parse({
@@ -390,9 +446,10 @@ export function createServer(options: ServerOptions = {}) {
             capability_name: String(body.capability_name ?? ""),
             provider: String(body.provider ?? ""),
             input: asRecord(body.input),
-            requested_by: String(body.requested_by ?? ""),
-            external_actor:
-              externalActor && typeof externalActor === "object" && !Array.isArray(externalActor)
+            requested_by: callerWorkerId ?? String(body.requested_by ?? ""),
+            external_actor: callerWorkerId
+              ? { actor_type: "worker", actor_id: callerWorkerId, display_name: null }
+              : externalActor && typeof externalActor === "object" && !Array.isArray(externalActor)
                 ? externalActor
                 : null,
             task_id: String(body.task_id ?? ""),
@@ -738,7 +795,11 @@ export function createServer(options: ServerOptions = {}) {
             id: typeof body.id === "string" ? body.id : null,
             workspace_id: context.workspaceId,
             envelope_id: String(body.envelope_id ?? ""),
-            worker_id: String(body.worker_id ?? ""),
+            // A worker principal submits outcomes only as ITSELF — forced from the token.
+            worker_id:
+              context.principal.kind === "worker"
+                ? context.principal.workerId
+                : String(body.worker_id ?? ""),
             status: String(body.status ?? "completed") as never,
             summary: String(body.summary ?? ""),
             output:
