@@ -414,10 +414,14 @@ export function createServer(options: ServerOptions = {}) {
         return;
       }
       if (request.method === "GET" && url.pathname === "/capability-calls") {
+        // A worker sees only its OWN calls; the operator sees all in the workspace.
+        const callWorkerId =
+          context.principal.kind === "worker" ? context.principal.workerId : null;
+        const calls = new CapabilityCallStore(database).listForWorkspace(context.workspaceId);
         sendJson(
           response,
           200,
-          new CapabilityCallStore(database).listForWorkspace(context.workspaceId),
+          callWorkerId === null ? calls : calls.filter((c) => c.requested_by === callWorkerId),
         );
         return;
       }
@@ -487,11 +491,24 @@ export function createServer(options: ServerOptions = {}) {
         return;
       }
       if (request.method === "GET" && url.pathname === "/capability-results") {
-        sendJson(
-          response,
-          200,
-          new CapabilityResultStore(database).listForWorkspace(context.workspaceId),
-        );
+        const results = new CapabilityResultStore(database).listForWorkspace(context.workspaceId);
+        if (context.principal.kind === "worker") {
+          // A worker sees only results for its OWN calls.
+          const ownWorkerId = context.principal.workerId;
+          const ownCallIds = new Set(
+            new CapabilityCallStore(database)
+              .listForWorkspace(context.workspaceId)
+              .filter((c) => c.requested_by === ownWorkerId)
+              .map((c) => c.id),
+          );
+          sendJson(
+            response,
+            200,
+            results.filter((result) => ownCallIds.has(result.call_id)),
+          );
+          return;
+        }
+        sendJson(response, 200, results);
         return;
       }
       if (request.method === "GET" && url.pathname === "/workers") {
@@ -820,13 +837,18 @@ export function createServer(options: ServerOptions = {}) {
           sendNotFound(response);
           return;
         }
+        // A worker sees only the envelopes issued to ITSELF; the operator sees all for the item.
+        const envWorkerId = context.principal.kind === "worker" ? context.principal.workerId : null;
+        const envelopes = new BoundedWorkEnvelopeStore(database).listForWorkItem(
+          context.workspaceId,
+          approvalRoute.workEnvelopeId,
+        );
         sendJson(
           response,
           200,
-          new BoundedWorkEnvelopeStore(database).listForWorkItem(
-            context.workspaceId,
-            approvalRoute.workEnvelopeId,
-          ),
+          envWorkerId === null
+            ? envelopes
+            : envelopes.filter((envelope) => envelope.worker_id === envWorkerId),
         );
         return;
       }

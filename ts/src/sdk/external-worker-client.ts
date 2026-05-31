@@ -1,19 +1,19 @@
 /**
  * A network SDK for an OUT-OF-PROCESS external worker. Where `OpenMaoLocalClient` drives an
  * in-process `Database` handle, this client speaks only the loopback HTTP API over `fetch` — so a
- * real separate process (e.g. a "Hermes worker" running its own runtime) can register, request a
- * governed capability, and submit an outcome under OpenMAO authority without ever sharing the
- * database, a provider, or a raw credential.
+ * real separate process (e.g. a "Hermes worker" running its own runtime) can request a governed
+ * capability and submit an outcome under OpenMAO authority without ever sharing the database, a
+ * provider, or a raw credential.
  *
- * Trust boundary (first cut): the worker process holds the operator token on the loopback surface.
- * Per-worker auth is future work; governance still fully applies because every capability call is
- * gated server-side by `CapabilityRegistryService.invoke()` against persisted state (see ADR 0003).
+ * It authenticates with a **per-worker token** (`x-openmao-worker-token`), NOT the operator token —
+ * so it can ONLY act as its own worker: it cannot issue envelopes, approve, or impersonate another
+ * worker. The worker's identity and workspace are forced server-side from the token (so this client
+ * never sets `requested_by` / `worker_id` / workspace itself). Operator actions (registering a
+ * worker, issuing its bounded envelope, minting its token) are done by the operator, out of band.
  */
 export type ExternalWorkerClientOptions = {
   baseUrl: string;
-  operatorToken: string;
-  workspaceId: string;
-  actor: string;
+  workerToken: string;
 };
 
 export type CapabilityCallRequest = {
@@ -22,12 +22,6 @@ export type CapabilityCallRequest = {
   capability_name: string;
   provider: string;
   input?: Record<string, unknown>;
-  requested_by: string;
-  external_actor?: {
-    actor_type: string;
-    actor_id: string;
-    display_name?: string | null;
-  } | null;
   task_id: string;
   credential_handle?: string | null;
   side_effecting?: boolean;
@@ -39,7 +33,6 @@ export type CapabilityCallRequest = {
 export type WorkerOutcomeRequest = {
   id?: string;
   envelope_id: string;
-  worker_id: string;
   status: "completed" | "blocked" | "failed";
   summary: string;
   output?: Record<string, unknown>;
@@ -58,18 +51,6 @@ export class ExternalWorkerClientError extends Error {
 
 export class ExternalWorkerClient {
   constructor(private readonly options: ExternalWorkerClientOptions) {}
-
-  /** Register this worker identity (its grant set). Idempotent on `idempotency_key`. */
-  registerWorker(input: {
-    id?: string;
-    name: string;
-    runtime: string;
-    version?: string | null;
-    allowed_capabilities: string[];
-    idempotency_key?: string | null;
-  }): Promise<Record<string, unknown>> {
-    return this.request<Record<string, unknown>>("POST", "/workers", input);
-  }
 
   /** List the bounded envelopes issued to a work item — how the worker discovers its authority. */
   listEnvelopes(workItemId: string): Promise<unknown[]> {
@@ -107,9 +88,7 @@ export class ExternalWorkerClient {
       method,
       headers: {
         "content-type": "application/json",
-        "x-openmao-operator-token": this.options.operatorToken,
-        "x-openmao-actor": this.options.actor,
-        "x-openmao-workspace": this.options.workspaceId,
+        "x-openmao-worker-token": this.options.workerToken,
       },
     };
     if (body !== undefined) {

@@ -162,4 +162,32 @@ describe("per-worker auth", () => {
     );
     expect(status).not.toBe(403);
   });
+
+  it("scopes a worker's reads to its OWN records (no workspace-wide leakage)", async () => {
+    // The operator records a call attributed to a different worker.
+    await req(
+      "POST",
+      "/capability-calls",
+      operatorHeaders(),
+      capabilityCallBody({
+        requested_by: "worker_other",
+        external_actor: { actor_type: "worker", actor_id: "worker_other", display_name: null },
+        idempotency_key: "pwa:other",
+      }),
+    );
+    // The worker records its own call.
+    await req(
+      "POST",
+      "/capability-calls",
+      workerHeaders(),
+      capabilityCallBody({ idempotency_key: "pwa:mine" }),
+    );
+
+    const { json } = await req("GET", "/capability-calls", workerHeaders());
+    const requesters = new Set(
+      (json as Array<{ requested_by: string }>).map((c) => c.requested_by),
+    );
+    expect(requesters.has(REFERENCE_WORKER_ID)).toBe(true);
+    expect(requesters.has("worker_other")).toBe(false);
+  });
 });

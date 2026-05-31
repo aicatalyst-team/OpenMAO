@@ -10,6 +10,7 @@ import { createServer } from "../src/api/server.js";
 import { DiagnosisService } from "../src/diagnosis/index.js";
 import { Database, EventStore } from "../src/persistence/index.js";
 import { type CapabilityCallRequest, ExternalWorkerClient } from "../src/sdk/index.js";
+import { WorkerAuthService } from "../src/security/worker-auth.js";
 import { WORKSPACE_ID } from "../src/spine/index.js";
 import {
   prepareReferenceWorkerDemo,
@@ -29,19 +30,15 @@ let dbPath: string;
 let server: Server;
 let serverOpen = false;
 let baseUrl: string;
+let workerToken: string;
 
 function call(overrides: Partial<CapabilityCallRequest>): CapabilityCallRequest {
+  // No requested_by / external_actor — the worker's identity is forced server-side from its token.
   return {
     run_id: REFERENCE_RUN_ID,
     capability_name: "mock.side_effect.record",
     provider: "mock.side_effect",
     input: { message: "external worker over HTTP" },
-    requested_by: REFERENCE_WORKER_ID,
-    external_actor: {
-      actor_type: "worker",
-      actor_id: REFERENCE_WORKER_ID,
-      display_name: "Hermes Worker",
-    },
     task_id: REFERENCE_TASK_ID,
     credential_handle: REFERENCE_CREDENTIAL_HANDLE,
     side_effecting: true,
@@ -67,6 +64,10 @@ beforeEach(async () => {
   const database = new Database(dbPath);
   database.initialize();
   prepareReferenceWorkerDemo(database);
+  workerToken = new WorkerAuthService(database).mint({
+    workspace_id: WORKSPACE_ID,
+    worker_id: REFERENCE_WORKER_ID,
+  }).token;
   database.close();
 
   server = createServer({ dbPath, operatorToken: OPERATOR_TOKEN, workspaceId: WORKSPACE_ID });
@@ -83,12 +84,7 @@ afterEach(async () => {
 });
 
 function newClient(): ExternalWorkerClient {
-  return new ExternalWorkerClient({
-    baseUrl,
-    operatorToken: OPERATOR_TOKEN,
-    workspaceId: WORKSPACE_ID,
-    actor: "hermes-worker",
-  });
+  return new ExternalWorkerClient({ baseUrl, workerToken });
 }
 
 describe("ExternalWorkerClient — out-of-process governed work end to end over HTTP", () => {
@@ -105,7 +101,6 @@ describe("ExternalWorkerClient — out-of-process governed work end to end over 
     // 2. The worker reports a FAILED outcome back into the org record over HTTP.
     const outcome = await client.submitOutcome(REFERENCE_WORK_ID, {
       envelope_id: REFERENCE_ENVELOPE_ID,
-      worker_id: REFERENCE_WORKER_ID,
       status: "failed",
       summary: "Could not complete the bounded task within its granted authority.",
       idempotency_key: "hermes:outcome:failed",
