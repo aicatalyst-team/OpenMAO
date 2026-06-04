@@ -2561,6 +2561,20 @@
             "null"
           ],
           "default": null
+        },
+        "prev_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
         }
       },
       "required": [
