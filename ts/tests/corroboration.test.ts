@@ -143,9 +143,11 @@ describe("corroboration-based ratification", () => {
       collective_memory_dir: join(tmpRoot, "collective_memory"),
     });
     const candidate = seedPromotionFixtures(service, run);
+    // Non-run promotion: approving routes through the apply_without_run handler
+    // (createApprovalServiceWithApplications) — the production path Fix B guards.
+    // (A run-bound promotion would resume the run instead and skip the handler.)
     service.propose(candidate, {
       requested_by: REQUESTED_BY,
-      run_id: run.id,
       approval_id: APPROVAL_ID,
     });
 
