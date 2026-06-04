@@ -32,16 +32,19 @@ Stated as facts against the current contracts and services:
   ([ts/src/api/server.ts](../../ts/src/api/server.ts)). The console hardcodes a single
   `CONSOLE_ACTOR`. As a result, every separation-of-duties check downstream compares
   caller-controlled values.
-- **Separation-of-duties is enforced inconsistently.** Autonomy ratification refuses a ratifier equal
-  to the proposer ([ts/src/org/autonomy.ts](../../ts/src/org/autonomy.ts)) and org-change *apply*
-  refuses an applier equal to the proposer ([ts/src/org/apply.ts](../../ts/src/org/apply.ts)), but
-  `ApprovalService.approve` records the approver and never compares it to `requested_by`
-  ([ts/src/governance/approvals.ts](../../ts/src/governance/approvals.ts)) — so memory promotions and
-  org-change approvals are self-approvable.
-- **Corroboration distinctness is by string, and is off by default.** A promotion's corroboration
-  must come from a different actor *string* than the proposer, and `min_corroboration` defaults to
-  `0` ([ts/src/memory/service.ts](../../ts/src/memory/service.ts)), so independent evidence is not
-  required unless explicitly configured.
+- **Separation-of-duties is enforced, but only cooperatively.** Autonomy ratification refuses a
+  ratifier equal to the proposer ([ts/src/org/autonomy.ts](../../ts/src/org/autonomy.ts)), org-change
+  *apply* refuses an applier equal to the proposer ([ts/src/org/apply.ts](../../ts/src/org/apply.ts)),
+  and `ApprovalService.approve` refuses an approver equal to the requester (and a blank approver
+  identity) ([ts/src/governance/approvals.ts](../../ts/src/governance/approvals.ts)). But these
+  compare caller-supplied identity strings — and an omitted actor is still permitted under the
+  operator token — so they make self-approval *harder, not impossible*, until identity is bound at
+  the boundary (Layer 0).
+- **Corroboration distinctness is by string.** A promotion's corroboration must come from a different
+  actor *string* than the proposer. Independent corroboration is now required by default
+  (`min_corroboration` defaults to `1`; the deterministic demo opts out)
+  ([ts/src/memory/service.ts](../../ts/src/memory/service.ts)), but distinctness is still checked by
+  string, not by `principal_id`.
 
 These are individually reasonable for a single trusted operator. They become load-bearing the moment
 a second human shares the boundary.
@@ -94,6 +97,13 @@ References that carry authority — `reviewer`, `requested_by`, `ratified_by`, `
    principal references.
 4. Bind identity at the boundary (Layer 0), then only afterward build the swappable
    `CollaborationAdapter` (Layer 2) as identity-and-evidence ingestion across Sprout / Matrix / Slack.
+
+> Steps 1–3 are additive and remain **cooperative**: they enrich the data model and tighten the
+> string-level checks, but the separation-of-duties guards stay caller-supplied (and therefore
+> bypassable) until step 4 binds identity at the boundary. Layer 0 is the foundation by *priority* —
+> the type it binds to (Layer 1) is built first, then the boundary is bound; that binding is the step
+> that makes enforcement non-bypassable. Until then, the shipped guards are deliberately scoped as
+> "harder, not impossible."
 
 ## Acceptance criteria
 

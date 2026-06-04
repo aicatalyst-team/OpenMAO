@@ -314,10 +314,19 @@ export class ApprovalService {
 
   private assertNotSelfApproval(approval: ApprovalRequest, actor: string | null): void {
     if (actor === null) {
+      // Unattributed: the operator token authorizes the call. Attribution becomes mandatory
+      // and verified once identity is bound at the HTTP boundary — see
+      // docs/design/multi-human-governance.md and issue #92.
       return;
     }
     const approver = actor.trim();
-    if (approver.length > 0 && approver === approval.requested_by.trim()) {
+    if (approver.length === 0) {
+      // A supplied-but-blank actor is malformed; it must not pass as "no actor".
+      throw new SelfApprovalError(
+        `approver identity must not be blank for approval ${approval.id}`,
+      );
+    }
+    if (approver === approval.requested_by.trim()) {
       throw new SelfApprovalError(
         `approver must differ from requester for approval ${approval.id}`,
       );

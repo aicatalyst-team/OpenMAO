@@ -177,6 +177,22 @@ describe("corroboration-based ratification", () => {
     expect(new PromotionCandidateStore(database).get(candidate.id)?.status).toBe("ratified");
   });
 
+  it("rejects a promotion whose requested_by does not match the candidate's proposed_by", () => {
+    const run = seedRunningRun();
+    const service = new PromotionService(database, {
+      collective_memory_dir: join(tmpRoot, "collective_memory"),
+    });
+    const candidate = seedPromotionFixtures(service, run);
+    // The fixture candidate is proposed_by REQUESTED_BY. A divergent requester would let the
+    // proposer self-approve past the approver != requester guard, so propose() must reject it.
+    expect(() =>
+      service.propose(candidate, {
+        requested_by: "operator_someone_else",
+        approval_id: APPROVAL_ID,
+      }),
+    ).toThrow(/proposed_by/);
+  });
+
   it("rejects corroboration by the candidate's own source memory entry", () => {
     const run = seedRunningRun();
     const service = new PromotionService(database, {
@@ -250,6 +266,7 @@ describe("corroboration-based ratification", () => {
     const run = seedRunningRun();
     const service = new PromotionService(database, {
       collective_memory_dir: join(tmpRoot, "collective_memory"),
+      min_corroboration: 0,
     });
     const candidate = seedPromotionFixtures(service, run);
     service.propose(candidate, {
