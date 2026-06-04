@@ -18,9 +18,11 @@ import {
   CorroborationStore,
   Database,
   EventStore,
+  PromotionCandidateStore,
   RunStore,
   WorkspaceStore,
 } from "../src/persistence/index.js";
+import { createApprovalServiceWithApplications } from "../src/runtime/approvals.js";
 
 const fixturePath = new URL("../../tests/fixtures/canonical_v0.json", import.meta.url);
 const REQUESTED_BY = "agent_55555555555555555555555555555555";
@@ -133,6 +135,44 @@ describe("corroboration-based ratification", () => {
     });
     // source confidence 0.8 + 0.05 * 1 corroboration.
     expect(collective.confidence).toBeCloseTo(0.85, 5);
+  });
+
+  it("requires independent corroboration to ratify through the production apply path", () => {
+    const run = seedRunningRun();
+    const service = new PromotionService(database, {
+      collective_memory_dir: join(tmpRoot, "collective_memory"),
+    });
+    const candidate = seedPromotionFixtures(service, run);
+    service.propose(candidate, {
+      requested_by: REQUESTED_BY,
+      run_id: run.id,
+      approval_id: APPROVAL_ID,
+    });
+
+    // The production apply path wires min_corroboration: 1, so approving with zero
+    // corroborations rolls back and leaves the candidate unratified.
+    expect(() =>
+      createApprovalServiceWithApplications(database).approve(APPROVAL_ID, {
+        workspace_id: run.workspace_id,
+        actor: "operator",
+      }),
+    ).toThrow(/corroboration/);
+    expect(new PromotionCandidateStore(database).get(candidate.id)?.status).toBe("pending");
+
+    // One independent corroboration satisfies the production threshold.
+    service.recordCorroboration(candidate.id, {
+      source_memory_entry: CORROBORATOR_ID,
+      corroborated_by: CORROBORATOR_ACTOR,
+      run_id: run.id,
+      corroboration_id: CORROBORATION_ID,
+    });
+    const approved = createApprovalServiceWithApplications(database).approve(APPROVAL_ID, {
+      workspace_id: run.workspace_id,
+      actor: "operator",
+    });
+
+    expect(approved.status).toBe("approved");
+    expect(new PromotionCandidateStore(database).get(candidate.id)?.status).toBe("ratified");
   });
 
   it("rejects corroboration by the candidate's own source memory entry", () => {
