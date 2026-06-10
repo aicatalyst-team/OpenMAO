@@ -5,6 +5,10 @@ to the current contract model names. If a concept is not listed here, defer to
 [docs/ARCHITECTURE.md](./ARCHITECTURE.md) and the executable contracts in
 [ts/src/contracts/models.ts](../ts/src/contracts/models.ts).
 
+A few contract types are marked below as reserved (defined in the contracts but not yet wired into
+the runtime); their hard removal is a future breaking change staged for founder ratification, not
+done here.
+
 ## Positioning Terms
 
 | Term | Meaning |
@@ -35,10 +39,14 @@ to the current contract model names. If a concept is not listed here, defer to
 | Goal | `Goal` | Independent because goals outlive missions and have lifecycle. |
 | Role | `Role` | Purpose, permissions, capability grants, reports-to. |
 | Agent | `Agent` | Role-bound worker with private memory scope. |
+| External worker identity | `WorkerIdentity` | Registered external runtime principal with allowed capabilities and status. |
 | Unit of work | `WorkItem` | Accountable: owner, reviewer, criteria, risk, gates. |
 | Delegated task | `TaskEnvelope` | Bounded handoff between spine and agent. |
-| Agent return | `AgentOutcome` | Structured outcome with artifacts and cost. |
+| External handoff | `BoundedWorkEnvelope` | Bounded envelope issued to an external worker: objective, allowed capabilities, gates, expiry. |
+| Agent return | `AgentOutcome` | Structured outcome with artifacts and cost. (reserved; not yet wired — staged for removal pending founder ratification) |
+| Worker return | `WorkerOutcome` | Idempotent outcome submitted by an external worker against an envelope. |
 | Execution unit | `Run` | Status includes `suspended_approval`. |
+| Tool (declared record) | `Tool` | Declared external system record with kind, provider, scopes, and credential policy. (reserved; not yet wired — staged for removal pending founder ratification) |
 | Capability (declaration) | `Capability` | Canonical input/output schemas. |
 | Capability invocation | `CapabilityCall` | Persisted before approval evaluation. |
 | Capability result | `CapabilityResult` | Output, artifacts, status. |
@@ -46,17 +54,25 @@ to the current contract model names. If a concept is not listed here, defer to
 | Promotion proposal | `PromotionCandidate` | Individual memory to collective memory requires approval. |
 | Corroboration | `Corroboration` | Independent evidence (distinct actor and memory entry) supporting a promotion; raises confidence, never replaces approval. |
 | Artifact | `Artifact` | Structured output with content hash. |
-| Policy | `Policy` | Human-readable policy text in the current release. |
+| Policy | `Policy` | Human-readable policy text in the current release. (reserved; not yet wired — staged for removal pending founder ratification) |
 | Policy outcome | `PolicyDecision` | `allow`, `block`, `require_approval`, `log_only`. |
 | Approval | `ApprovalRequest` | Resumes run or applies without run. |
-| Evaluation | `Evaluation` | Rubric-driven scoring. |
+| Evaluation | `Evaluation` | Rubric-driven scoring. (reserved; not yet wired — staged for removal pending founder ratification) |
 | Audit event | `Event` | Workspace-local `seq`, optional `run_seq`. |
+| Ingested external evidence | `IngestionRecord` | Idempotent record of an externally submitted event, trace, outcome, artifact, or memory proposal. |
 | Run trace node | `Trace` | Required for every graph node. |
 | Idempotency record | `NodeEffect` | Tracks one-time side effects per node. |
 | Model request | `ModelRequest` | All inference routes through here. |
 | Model response | `ModelResponse` | Persisted with cost. |
 | Org change proposal | `OrgChangeProposal` | Evidence-backed proposal for a reviewed role, policy, SOP/workflow, memory, capability, or org-graph change. |
+| Change evidence | `OrgChangeEvidence` | Typed, weighted reference backing a proposal, notification, or autonomy case. |
+| Applied org change | `OrgChangeApplication` | First-class record of an applied change with hashed before/after target state for verification and revert. |
+| Apply kill-switch | `OrgControlState` | Workspace-scoped control state; `apply_paused` halts the apply engine while sense/report stays live. |
+| Autonomy widening case | `AutonomyCase` | Human-ratified, evidence-backed request to widen the autonomy dial one step. |
+| Standing obligation | `Cadence` | Organization-of-record schedule that any worker can read or advance. |
+| Operator notification | `Notification` | Evidence-backed, actor-attributed observation delivered to the operator. |
 | Operational view | `WorldModelSnapshot` | Materialized projection from events; cache only. |
+| Collective memory summary | `CollectiveMemorySummary` | World-model projection of a collective entry: kind, confidence, corroboration count. |
 
 ## Notable Splits
 

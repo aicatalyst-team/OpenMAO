@@ -18,12 +18,19 @@ All notable public release changes for OpenMAO are documented here.
 - Every observation is attributed to the `chief_of_staff` actor and backed by a recorded event. The
   loop takes time as an explicit parameter and records it on a `cadence.fired` event, so it replays
   deterministically; timestamps are normalized to canonical second precision for correct due-checks.
+- M0 causal instrumentation: events carry optional causal fields (`causal_parent_event_id`, consumed/produced refs) and the live work-lifecycle emitters populate them, so failures can be traced backward over real history rather than hand-built fixtures (#52, #59).
+- M1 reversible apply: a transactional org-change apply engine with blast-radius caps, proposer/applier separation, evidence requirements, an audited kill-switch, post-apply verification, and revert with conflict detection. Honest scope: exactly one change type has a real applier today (`memory_cleanup` — retiring stale memory entries); all other change types still take a marker path that records the decision without changing behavior and is not revertible from the operator surface (#55; marker-path truth-in-status and revert semantics tracked in #105).
+- M2 advisory heartbeat: a deterministic, report-only beat that senses via the Chief of Staff and delivers digests; it never applies changes or moves autonomy (#56).
+- M3 advisory causal diagnosis: backward-trace over the M0 causal graph with a structural counterfactual score; emits `diagnosis.suggested` only and feeds no action by design (#57).
+- M4 earned-autonomy mechanism: the dial widens only via a human-ratified, evidence-backed `AutonomyCase`, one step at a time, under a ceiling, after an audited track record; narrowing is always allowed. Honest scope: library + tests only — no CLI/API/console surface can yet propose or ratify a widening, so the dial does not move in a running deployment (#58; surface tracked with issues #70/#87 and PR #62).
+- Idempotency-replay boundary locked loud-safe: replaying a legacy (pre-M0) event under an enriched emitter raises a typed conflict instead of silently duplicating; the one-time causal backfill for legacy rows is tracked as follow-up (commit 9c28e83, issue #109).
 
 ### Verification
 
 - `make check`
 - Deterministic local Chief of Staff smoke: `cos init` then `cos tick` seeds cadences, fires the
   sensors, and surfaces evidence-backed notifications; re-ticking at the same time is a no-op.
+- Self-correction loop turn over the operator surface: two blocked work items -> `learning scan` (repeated_blocker) -> approve -> `learning apply`; documented limitation: the resulting marker application records a recommendation and is not revertible (`learning revert` reports no applied change) — tracked in #105.
 
 ## v0.5.0 - 2026-05-30
 
