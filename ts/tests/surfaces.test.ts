@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createServer } from "../src/api/server.js";
 import { runCli } from "../src/cli.js";
-import { WorkspaceSchema } from "../src/contracts/index.js";
+import { WorkItemSchema, WorkspaceSchema } from "../src/contracts/index.js";
 import { Database, WorkItemStore, WorkspaceStore } from "../src/persistence/index.js";
 import {
   COORDINATOR_AGENT_ID,
@@ -132,6 +132,46 @@ describe("TypeScript operator surfaces", () => {
     const database = new Database(dbPath);
     try {
       expect(new WorkItemStore(database).get(WORK_ITEM_ID)?.status).toBe("done");
+    } finally {
+      database.close();
+    }
+  });
+
+  it("refuses to adopt a tampered work item occupying the demo work-item id (#106 audit P2)", async () => {
+    // The re-entrant seeder may only adopt the demo fixture itself: `status` is the sole
+    // field the demo lifecycle mutates, so a row that differs in any other field is a
+    // foreign work item and must surface as a conflict instead of being silently adopted
+    // while later demo events assume the fixture's owner/objective values.
+    expect(await runCli(["demo"], { dbPath })).toBe(0);
+
+    const tamperDatabase = new Database(dbPath);
+    try {
+      const store = new WorkItemStore(tamperDatabase);
+      const seeded = store.get(WORK_ITEM_ID);
+      expect(seeded?.status).toBe("queued");
+      store.update(
+        WorkItemSchema.parse({
+          ...seeded,
+          objective: "Audit production access controls.",
+          owner: "agent_ffffffffffffffffffffffffffffffff",
+        }),
+      );
+    } finally {
+      tamperDatabase.close();
+    }
+
+    const conflictMessage = `work item already exists and does not match the demo fixture: ${WORK_ITEM_ID}`;
+    await expect(
+      runCli(["cos", "init", "--at", "2026-03-01T00:00:00Z"], { dbPath }),
+    ).rejects.toThrow(conflictMessage);
+    await expect(runCli(["demo"], { dbPath })).rejects.toThrow(conflictMessage);
+
+    // The conflict must leave the tampered row untouched, not reset it to the fixture.
+    const database = new Database(dbPath);
+    try {
+      const row = new WorkItemStore(database).get(WORK_ITEM_ID);
+      expect(row?.objective).toBe("Audit production access controls.");
+      expect(row?.owner).toBe("agent_ffffffffffffffffffffffffffffffff");
     } finally {
       database.close();
     }
