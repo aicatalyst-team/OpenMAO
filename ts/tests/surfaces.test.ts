@@ -8,11 +8,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createServer } from "../src/api/server.js";
 import { runCli } from "../src/cli.js";
 import { WorkspaceSchema } from "../src/contracts/index.js";
-import { Database, WorkspaceStore } from "../src/persistence/index.js";
+import { Database, WorkItemStore, WorkspaceStore } from "../src/persistence/index.js";
 import {
   COORDINATOR_AGENT_ID,
   PROMOTION_APPROVAL_ID,
   RUN_ID,
+  WORK_ITEM_ID,
   WORKSPACE_ID,
 } from "../src/spine/index.js";
 import {
@@ -101,6 +102,39 @@ describe("TypeScript operator surfaces", () => {
       }),
     ).toBe(0);
     expect(JSON.parse(runEventsOutput.lines[0] ?? "[]").length).toBeGreaterThan(0);
+  });
+
+  it("shares one state dir between the demo and the Chief of Staff without colliding (#106)", async () => {
+    // Regression: the completed demo mutates the seeded work item (status -> "done"), and a
+    // later `cos init`/`cos tick` re-runs initDemoWorkspace() against the same database. The
+    // seeder must adopt the existing work item instead of throwing "work item already exists".
+    const demoOutput = capture();
+    const approveOutput = capture();
+    const initOutput = capture();
+    const tickOutput = capture();
+    const at = "2026-03-01T00:00:00Z";
+
+    expect(await runCli(["demo"], { dbPath, write: demoOutput.write })).toBe(0);
+    expect(await runCli(["demo-approve"], { dbPath, write: approveOutput.write })).toBe(0);
+    expect(JSON.parse(approveOutput.lines[0] ?? "{}").status).toBe("completed");
+
+    expect(await runCli(["cos", "init", "--at", at], { dbPath, write: initOutput.write })).toBe(0);
+    expect(JSON.parse(initOutput.lines[0] ?? "[]").length).toBeGreaterThan(0);
+    expect(await runCli(["cos", "tick", "--at", at], { dbPath, write: tickOutput.write })).toBe(0);
+    const tick = JSON.parse(tickOutput.lines[0] ?? "{}") as {
+      fired: unknown[];
+      notification_count: number;
+    };
+    expect(tick.fired.length).toBeGreaterThan(0);
+    expect(tick.notification_count).toBeGreaterThan(0);
+
+    // Adoption, not reset: re-seeding must keep the completed demo work item intact.
+    const database = new Database(dbPath);
+    try {
+      expect(new WorkItemStore(database).get(WORK_ITEM_ID)?.status).toBe("done");
+    } finally {
+      database.close();
+    }
   });
 
   it("creates work, registers a worker, and issues bounded envelopes through the CLI", async () => {

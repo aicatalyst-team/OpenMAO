@@ -584,7 +584,12 @@ export class SpineService {
         agentStore.save(agent);
       }
       new GoalStore(this.database).save(GoalSchema.parse(defaultGoal()));
-      new WorkItemStore(this.database).save(WorkItemSchema.parse(defaultWorkItem()));
+      // Re-entrant seeding: the demo run mutates this work item (e.g. status -> "done"), so a
+      // second init must adopt the existing item instead of re-saving the pristine fixture.
+      const workItemStore = new WorkItemStore(this.database);
+      if (!workItemStore.get(WORK_ITEM_ID)) {
+        workItemStore.save(WorkItemSchema.parse(defaultWorkItem()));
+      }
       this.events.append({
         workspace_id: workspace.id,
         kind: "workspace.created",
