@@ -507,4 +507,136 @@ describe("v7 one-time causal backfill for pre-M0 events (#109)", () => {
     // The legacy failure now traces back to the legacy creation of its work item.
     expect(candidateIds).toContain(EVT_W2_CREATED);
   });
+
+  it("keeps the migration's frozen actor-ref derivation byte-equal to the live emitter's", () => {
+    // `inferredActorRef` (ts/src/persistence/schema.ts) is a deliberately frozen,
+    // module-private copy of the live emitter's `asActorRef` (ts/src/work/service.ts).
+    // Both are private on purpose, so this guard compares them through their real
+    // call sites — the only places their outputs are observable: the live emitter
+    // stamps `actor_ref: asActorRef(actor)` on work.created, and the backfill
+    // stamps `actor_ref: inferredActorRef(actor)` on a legacy work.created row.
+    // That is strictly stronger than importing the two functions: it also fails if
+    // the emitter ever stops routing through `asActorRef`. If the live shape
+    // drifts from the frozen copy, this fails loudly NOW instead of surfacing
+    // later as a silent EventIdempotencyConflictError on an enriched replay of a
+    // backfilled event.
+    const table: Array<{
+      actor: string;
+      expected_type: "agent" | "worker" | "operator" | "system";
+    }> = [
+      { actor: "agent_planner", expected_type: "agent" }, // plain agent id (underscore form)
+      { actor: "agent:planner", expected_type: "agent" },
+      { actor: `worker:${worker.id}`, expected_type: "worker" }, // the outcome emitter's default
+      { actor: "worker_standalone", expected_type: "worker" },
+      { actor: "operator:local", expected_type: "operator" },
+      { actor: "operator_admin", expected_type: "operator" },
+      // Prefix (not substring) inference: the embedded "agent" must not win.
+      { actor: "operator:agent-admin", expected_type: "operator" },
+      { actor: "system:scheduler", expected_type: "system" },
+      { actor: "cron", expected_type: "system" }, // bare string with no known prefix
+      { actor: "workerbee", expected_type: "system" }, // "worker" letters without the :/_ separator
+    ];
+    const pad = (fill: string, index: number): string =>
+      `${fill.repeat(28)}${index.toString(16).padStart(4, "0")}`;
+
+    // Live side: one work.created per actor shape, written by today's emitter.
+    const work = new WorkService(database);
+    for (const [index, row] of table.entries()) {
+      work.createWork({
+        id: `work_${pad("e", index)}`,
+        workspace_id: workspaceId,
+        title: `drift probe ${index}`,
+        objective: "compare the live and frozen actor-ref derivations",
+        owner: "agent_worker",
+        actor: row.actor,
+      });
+    }
+    // Migration side: a legacy work.created per actor shape, then the backfill.
+    for (const [index, row] of table.entries()) {
+      const workItemId = `work_${pad("d", index)}`;
+      insertLegacyEvent({
+        id: `evt_${pad("f", index)}`,
+        seq: 200 + index,
+        kind: "work.created",
+        actor: row.actor,
+        data: { work_item: { id: workItemId } },
+        refs: [workItemId],
+        timestamp: "2026-05-27T15:21:00Z",
+        idempotency_key: `work:${workItemId}:created`,
+      });
+    }
+    stampAsV6();
+    reopenDatabase();
+
+    const events = new EventStore(database);
+    for (const [index, row] of table.entries()) {
+      const live = events.getByIdempotencyKey(workspaceId, `work:work_${pad("e", index)}:created`);
+      if (!live) {
+        throw new Error(`expected a live work.created event for actor: ${row.actor}`);
+      }
+      const backfilled = eventById(`evt_${pad("f", index)}`);
+      // Pin the live shape first so the byte-equality below can never pass
+      // vacuously (null === null) if the emitter stopped stamping actor_ref.
+      expect(live.payload.actor_ref?.actor_type).toBe(row.expected_type);
+      expect(live.payload.actor_ref?.actor_id).toBe(row.actor);
+      // dumpJson is the canonical (sorted-key) serialization both writers use for
+      // payload_json, so this is byte-equality of the two derivations.
+      expect(dumpJson(backfilled.payload.actor_ref)).toBe(dumpJson(live.payload.actor_ref));
+    }
+  });
+
+  it("keeps both append-only triggers armed after the migration's drop-and-recreate", () => {
+    // Premise check: this fixture actually took the rewrite path — the migration
+    // only drops and recreates events_no_update when it has rows to rewrite.
+    expect(eventById(EVT_W1_CREATED).payload.actor_ref).not.toBeNull();
+
+    // events_no_update was dropped and recreated inside the migration's
+    // transaction; events_no_delete was never dropped. Prove both are active on
+    // the reopened database, not just declared.
+    expect(() =>
+      database.connection
+        .prepare("UPDATE events SET actor = 'tamper' WHERE id = ?")
+        .run(EVT_W1_CREATED),
+    ).toThrow(/append-only/);
+    expect(() =>
+      database.connection.prepare("DELETE FROM events WHERE id = ?").run(EVT_W1_CREATED),
+    ).toThrow(/append-only/);
+
+    const triggers = database.connection
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name")
+      .all() as Array<{ name: string }>;
+    expect(triggers.map((row) => row.name)).toEqual(["events_no_delete", "events_no_update"]);
+  });
+
+  it("changes no structural DDL, which is what makes the synthesized v6 fixture schema-accurate", () => {
+    // The fixture is built by initializing the CURRENT schema and re-stamping
+    // user_version=6 (stampAsV6), not by replaying a checked-in v6 DDL dump. That
+    // synthesis is faithful only if v6 and v7 table structure are identical —
+    // which is the migration's design: v7 is data-only (causal backfill +
+    // drop/recreate of the byte-identical events_no_update trigger + version
+    // bump), adding no table, column, index, or trigger DDL. Prove it: a freshly
+    // initialized database and the fixture database that ran the full stamp-v6 →
+    // reopen → migrate cycle (with real rewrites, so the trigger drop/recreate
+    // path executed) must agree on every sqlite_master entry; only data and
+    // user_version may differ. If this ever fails, the migration changed
+    // structure — a violation of the data-only contract that also invalidates the
+    // v6 fixture synthesis — and the migration, not this test, is wrong.
+    const structuralDdl = (db: Database): Array<Record<string, unknown>> =>
+      db.connection
+        .prepare(
+          `SELECT type, name, tbl_name, sql FROM sqlite_master
+           WHERE type IN ('table', 'index', 'trigger')
+           ORDER BY type, name`,
+        )
+        .all() as Array<Record<string, unknown>>;
+
+    const fresh = new Database(join(tmpRoot, "fresh-v7.sqlite3"));
+    fresh.initialize();
+    const freshDdl = structuralDdl(fresh);
+    fresh.close();
+
+    expect(freshDdl.length).toBeGreaterThan(0);
+    expect(structuralDdl(database)).toEqual(freshDdl);
+    expect(database.connection.pragma("user_version", { simple: true })).toBe(7);
+  });
 });
