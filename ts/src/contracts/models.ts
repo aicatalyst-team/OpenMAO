@@ -512,6 +512,11 @@ export const EventSchema = z
     payload: EventPayloadSchema.default({ data: {}, refs: [] }),
     timestamp: UtcTimestampSchema,
     idempotency_key: z.string().nullable().default(null),
+    // Tamper-evidence: each persisted event chains its content hash onto the
+    // previous event in the workspace. Nullable so historical/synthetic events
+    // remain parseable; the EventStore populates both for everything it writes.
+    prev_hash: z.string().nullable().default(null),
+    hash: z.string().nullable().default(null),
   })
   .strict();
 
