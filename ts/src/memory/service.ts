@@ -21,6 +21,7 @@ import {
 import { ApprovalService } from "../governance/index.js";
 import {
   ApprovalStore,
+  CapabilityResultStore,
   CorroborationStore,
   type Database,
   EventStore,
@@ -28,7 +29,7 @@ import {
   NodeEffectStore,
   PromotionCandidateStore,
 } from "../persistence/index.js";
-import { sourcePromotionNote } from "./provenance.js";
+import { deriveMemoryTrust, type MemoryTrustStores, sourcePromotionNote } from "./provenance.js";
 
 export class PromotionServiceError extends Error {}
 
@@ -60,6 +61,7 @@ export class PromotionService {
   private readonly effects: NodeEffectStore;
   private readonly approvals: ApprovalStore;
   private readonly corroborations: CorroborationStore;
+  private readonly capabilityResults: CapabilityResultStore;
   private readonly minCorroboration: number;
   private readonly collectiveMemoryDir: string;
 
@@ -73,6 +75,7 @@ export class PromotionService {
     this.effects = new NodeEffectStore(database);
     this.approvals = new ApprovalStore(database);
     this.corroborations = new CorroborationStore(database);
+    this.capabilityResults = new CapabilityResultStore(database);
     this.minCorroboration = Math.max(0, Math.floor(options.min_corroboration ?? 0));
     this.collectiveMemoryDir =
       options.collective_memory_dir ??
@@ -88,17 +91,44 @@ export class PromotionService {
     }
 
     return this.database.transaction(() => {
+      // Anything may be recorded, but the trust tier is derived from what the
+      // store can resolve right now — never self-asserted — and labeled on the
+      // write event so the tier at write time is itself on the record.
+      const derivation = deriveMemoryTrust(parsed, this.trustStores());
       const stored = this.entries.save(parsed);
       this.events.append({
         workspace_id: stored.workspace_id,
         run_id: stored.provenance.run_id,
         kind: "memory.individual_written",
         actor: "promotion_service",
-        payload: EventPayloadSchema.parse({ data: { memory_entry: stored }, refs: [stored.id] }),
+        payload: EventPayloadSchema.parse({
+          data: { memory_entry: stored, trust: derivation.trust, trust_basis: derivation.basis },
+          refs: [stored.id],
+        }),
         idempotency_key: `${stored.id}:individual_written`,
       });
+      // A supplied ref that does not resolve is forged or dangling — an
+      // integrity signal, not mere absence. Refless entries are recorded
+      // untrusted without this event: absence is not forgery.
+      if (derivation.trust === "untrusted" && derivation.unresolved.length > 0) {
+        this.events.append({
+          workspace_id: stored.workspace_id,
+          run_id: stored.provenance.run_id,
+          kind: "memory.provenance_unresolved",
+          actor: "promotion_service",
+          payload: EventPayloadSchema.parse({
+            data: { memory_entry_id: stored.id, unresolved: derivation.unresolved },
+            refs: [stored.id],
+          }),
+          idempotency_key: `${stored.id}:provenance_unresolved`,
+        });
+      }
       return stored;
     });
+  }
+
+  private trustStores(): MemoryTrustStores {
+    return { events: this.events, capabilityResults: this.capabilityResults };
   }
 
   propose(
@@ -123,6 +153,16 @@ export class PromotionService {
       if (input.run_id && source.provenance.run_id !== input.run_id) {
         throw new PromotionServiceError(
           "run-bound promotion must match source memory provenance run",
+        );
+      }
+      // Promotion path of the provenance invariant (#113): only memory backed
+      // by a resolvable capability result, source event, or operator
+      // attestation can become organizational guidance.
+      if (deriveMemoryTrust(source, this.trustStores()).trust !== "guidance_eligible") {
+        throw new PromotionServiceError(
+          `source memory entry is not guidance-eligible: ${source.id} has no resolvable ` +
+            "provenance (capability result, source event, or operator attestation) and " +
+            "untrusted memory cannot be promoted to collective guidance",
         );
       }
 
@@ -227,6 +267,18 @@ export class PromotionService {
       if (source.status === "rejected" || source.status === "stale") {
         throw new PromotionServiceError(
           "a rejected or stale memory entry cannot corroborate a promotion",
+        );
+      }
+      // Corroboration path of the provenance invariant (#113): untrusted
+      // entries never count as evidence. Rejecting them here keeps every
+      // recorded corroboration row — and therefore corroboration_count —
+      // backed by guidance-eligible memory (trust resolution is monotonic:
+      // events and capability results are append-only, so an entry that
+      // qualifies at record time cannot later lose its basis).
+      if (deriveMemoryTrust(source, this.trustStores()).trust !== "guidance_eligible") {
+        throw new PromotionServiceError(
+          `corroborating memory entry is not guidance-eligible: ${source.id} has no ` +
+            "resolvable provenance and untrusted memory never counts as corroboration",
         );
       }
       const alreadyCorroborated = this.corroborations
@@ -418,7 +470,11 @@ export class PromotionService {
         agent_id: candidate.proposed_by,
         run_id: source.provenance.run_id,
         task_id: source.provenance.task_id,
+        // Carry every trust-bearing ref through promotion so the collective
+        // entry derives guidance-eligible on the same basis as its source.
         source_event_id: source.provenance.source_event_id,
+        capability_result_id: source.provenance.capability_result_id,
+        attested_by: source.provenance.attested_by,
         note: sourcePromotionNote(candidate.id),
       },
       confidence: Math.min(1, source.confidence + 0.05 * corroborationCount),

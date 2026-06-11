@@ -38,6 +38,8 @@ function saveEntry(over: Partial<MemoryEntry> & Pick<MemoryEntry, "id" | "conten
     scope: "individual",
     owner_id: null,
     kind: "semantic",
+    // Operator-attested so the corpus is guidance-eligible under the
+    // provenance invariant (#113); recall-by-default only sees such memory.
     provenance: {
       agent_id: null,
       role_id: null,
@@ -45,6 +47,8 @@ function saveEntry(over: Partial<MemoryEntry> & Pick<MemoryEntry, "id" | "conten
       run_id: null,
       source_event_id: null,
       note: null,
+      capability_result_id: null,
+      attested_by: "test_operator",
     },
     confidence: 0.5,
     status: "confirmed",
@@ -67,6 +71,8 @@ function seedCorpus(): void {
       run_id: null,
       source_event_id: null,
       note: `source_promotion:${CANDIDATE_ID}`,
+      capability_result_id: null,
+      attested_by: "test_operator",
     },
   });
   saveEntry({
@@ -207,6 +213,8 @@ describe("evidence-backed memory retrieval", () => {
         run_id: null,
         source_event_id: null,
         note: "source_promotion:",
+        capability_result_id: null,
+        attested_by: "test_operator",
       },
     });
 

@@ -42,6 +42,8 @@ function seed(): void {
   const workspace = WorkspaceSchema.parse(fixture.workspace);
   workspaceId = workspace.id;
   new WorkspaceStore(db).save(workspace);
+  // Operator-attested so the seeded corpus is guidance-eligible under the
+  // provenance invariant (#113) and stays visible to the default surfaces.
   const prov = {
     agent_id: null,
     role_id: null,
@@ -49,6 +51,8 @@ function seed(): void {
     run_id: null,
     source_event_id: null,
     note: null,
+    capability_result_id: null,
+    attested_by: "test_operator",
   };
   const entries = new MemoryEntryStore(db);
   entries.save(
