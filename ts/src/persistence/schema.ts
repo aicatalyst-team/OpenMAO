@@ -5,9 +5,11 @@ import { dumpJson } from "./serialization.js";
 /**
  * Current schema version. v7 is data-only: a one-time backfill of the M0 causal
  * envelope onto legacy (pre-instrumentation) work-lifecycle events (#109). The
- * table shapes are identical to v6.
+ * table shapes are identical to v6. v8 adds the `worker_credentials` table for
+ * per-worker authentication tokens (#102); DDL-only and idempotent, so it needs
+ * no data migration.
  */
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 // Defined once so the v7 migration (which must temporarily lift the update
 // guard) recreates exactly the trigger the schema declares.
@@ -475,6 +477,25 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_workspace
 ON notifications(workspace_id, created_at, id);
+
+-- Per-worker authentication tokens (v8, #102). Only the SHA-256 of the token is stored; the
+-- plaintext is shown once at mint time. A worker token authenticates a worker principal
+-- (worker_id + workspace) to the loopback API with strictly fewer rights than the operator token.
+CREATE TABLE IF NOT EXISTS worker_credentials (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  worker_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_worker_credentials_token_hash
+ON worker_credentials(token_hash);
+
+CREATE INDEX IF NOT EXISTS idx_worker_credentials_worker
+ON worker_credentials(workspace_id, worker_id);
 
 INSERT OR IGNORE INTO schema_version (version, applied_at)
 VALUES (${SCHEMA_VERSION}, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
