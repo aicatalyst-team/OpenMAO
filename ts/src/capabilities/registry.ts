@@ -379,6 +379,13 @@ export class CapabilityRegistryService {
         `Worker identity lacks capability grant: ${call.capability_name}.`,
       );
     }
+    // Narrowing gate (#120): the worker path mirrors the role-grant path — right after
+    // the grant check, query the suspension store fresh through the shared governance
+    // read so a suspended worker grant blocks at call time too.
+    const suspensionReason = this.governance.suspendedGrantBlockReason(call);
+    if (suspensionReason) {
+      return this.policyBlock(call, suspensionReason);
+    }
 
     const decision = this.governance.capabilityApprovalDecision(call, capability);
 
