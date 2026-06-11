@@ -145,6 +145,7 @@ export const AgentSchema = z
   })
   .strict();
 
+/** @deprecated Reserved; not wired into the runtime (`ToolStore` is exercised only by tests) — staged for removal pending founder ratification (#108). */
 export const ToolSchema = z
   .object({
     name: z.string(),
@@ -274,6 +275,7 @@ export const BoundedWorkEnvelopeSchema = z
   })
   .strict();
 
+/** @deprecated Superseded by `WorkerOutcomeSchema`; no runtime usage — staged for removal pending founder ratification (#108). */
 export const AgentOutcomeSchema = z
   .object({
     task_id: CanonicalIdSchema,
@@ -446,6 +448,7 @@ export const ArtifactSchema = z
   })
   .strict();
 
+/** @deprecated Reserved; the `policies` table is never read or written by the runtime — staged for removal pending founder ratification (#108). */
 export const PolicySchema = z
   .object({
     id: CanonicalIdSchema,
@@ -488,6 +491,7 @@ export const ApprovalRequestSchema = z
   })
   .strict();
 
+/** @deprecated Reserved; no usage outside the contracts — staged for removal pending founder ratification (#108). */
 export const EvaluationSchema = z
   .object({
     id: CanonicalIdSchema,
