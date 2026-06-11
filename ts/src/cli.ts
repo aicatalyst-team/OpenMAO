@@ -18,6 +18,7 @@ import {
   OrgChangeProposalStore,
   PromotionCandidateStore,
   RunStore,
+  verifyAllChains,
   WorkerIdentityStore,
   WorkerOutcomeStore,
   WorkItemStore,
@@ -163,7 +164,7 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 
     if (command === "help" || command === "--help" || command === "-h") {
       write(
-        "openmao demo | demo-approve | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | cos init|tick|run|inbox|read <id> [--unread] [--at ts] [--beats n] [--interval s] [--daemon] | cadence list|add --kind <kind> --interval <seconds> | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | world [--run run_id] [--workspace workspace_id] | diagnose <failure_event_id> | console",
+        "openmao demo | demo-approve | demo-deny | init | run demo|resume | worker demo|demo-approve | work list|show|create|assign|status|envelope|outcome|review | workers list|register | ingest list|record | learning scan|proposals|show|apply|revert | cos init|tick|run|inbox|read <id> [--unread] [--at ts] [--beats n] [--interval s] [--daemon] | cadence list|add --kind <kind> --interval <seconds> | org pause|resume|control | memory search|list|corroborate | approvals list|approve|reject <id> [--workspace workspace_id] | events [run_id]|--workspace [workspace_id] | verify-chain | world [--run run_id] [--workspace workspace_id] | diagnose <failure_event_id> | console",
       );
       return 0;
     }
@@ -180,6 +181,16 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
       requireDefaultWorkspace(selectedWorkspace);
       printJson(write, spine.resumeDemo(positions[1] ?? PROMOTION_APPROVAL_ID));
       return 0;
+    }
+    if (command === "demo-deny") {
+      requireDefaultWorkspace(selectedWorkspace);
+      printJson(write, await spine.denyDemo());
+      return 0;
+    }
+    if (command === "verify-chain") {
+      const report = verifyAllChains(database);
+      printJson(write, report);
+      return report.ok ? 0 : 1;
     }
     if (command === "run" && subcommand === "resume") {
       requireDefaultWorkspace(selectedWorkspace);
@@ -777,8 +788,12 @@ export async function runCli(args: string[], options: CliOptions = {}): Promise<
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  runCli(process.argv.slice(2)).catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
-  });
+  runCli(process.argv.slice(2))
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
 }

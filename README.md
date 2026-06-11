@@ -68,7 +68,16 @@ make install      # install dependencies
 make check        # lint, typecheck, tests, public hygiene
 make demo         # run the organization until it pauses for approval
 make demo-approve # approve and resume from durable state
+make demo-deny    # the other leg: reject the approval, then watch deny-by-default block a call
+make verify-chain # re-derive the event log's hash chain and report the first break, if any
 ```
+
+`demo-approve` and `demo-deny` resolve the same durable approval, so each state dir shows one leg:
+approve completes the run and promotes memory; deny fails the run with the rejection on the record,
+then shows a second beat where an agent calls a capability its role was never granted and the
+gateway blocks it before any provider executes. Delete `.openmao/` to replay the other leg.
+`verify-chain` exits nonzero if any event was edited, inserted, or reordered, and names the first
+broken event - try hand-editing a row in `.openmao/openmao.sqlite3` and running it again.
 
 See what the organization currently understands about itself:
 

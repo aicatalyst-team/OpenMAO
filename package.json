@@ -20,7 +20,9 @@
     "api": "tsx ts/src/api/server.ts",
     "console": "tsx ts/src/api/server.ts",
     "demo": "tsx ts/src/cli.ts demo",
-    "demo-approve": "tsx ts/src/cli.ts demo-approve"
+    "demo-approve": "tsx ts/src/cli.ts demo-approve",
+    "demo-deny": "tsx ts/src/cli.ts demo-deny",
+    "verify-chain": "tsx ts/src/cli.ts verify-chain"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
