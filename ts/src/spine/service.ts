@@ -22,6 +22,7 @@ import {
   MemoryScopeSchema,
   NodeEffectSchema,
   OrganizationSchema,
+  type PolicyDecision,
   PromotionCandidateSchema,
   RoleSchema,
   type Run,
@@ -75,9 +76,14 @@ export const RESEARCHER_MEMORY_ID = "mem_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 export const COORDINATOR_MEMORY_ID = "mem_dddddddddddddddddddddddddddddddd";
 export const PROMOTION_CANDIDATE_ID = "promo_cccccccccccccccccccccccccccccccc";
 export const PROMOTION_APPROVAL_ID = "approval_11111111111111111111111111111111";
+export const DENY_RUN_ID = "run_ffffffffffffffffffffffffffffffff";
+export const DENY_TASK_ID = "task_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+export const DENY_CAPABILITY_CALL_ID = "capcall_cccccccccccccccccccccccccccccccc";
+export const DENY_CAPABILITY_NAME = "mock.admin_export";
 
 const ARTIFACT_CONTENT_REF = "artifacts/onboarding_brief.md";
 const RUN_CREATED_AT = "2026-05-27T15:20:01Z";
+const DENY_RUN_CREATED_AT = "2026-05-27T15:22:00Z";
 const MEMORY_CREATED_AT = "2026-05-27T15:20:05Z";
 const PROMOTION_CREATED_AT = "2026-05-27T15:20:06Z";
 const SPINE_NODE_ORDER = [
@@ -110,6 +116,34 @@ export type SpineRunResult = {
   artifact_id?: string | null;
   promotion_candidate_id?: string | null;
   collective_memory_id?: string | null;
+};
+
+export type DenyDemoEvent = {
+  kind: string;
+  actor: string;
+  run_id: string | null;
+  note: string | null;
+};
+
+export type DenyDemoResult = {
+  workspace_id: string;
+  promotion_leg: {
+    run_id: string;
+    status: RunStatus;
+    active_node: string | null;
+    approval_id: string;
+    approval_status: ApprovalRequest["status"];
+  };
+  blocked_leg: {
+    run_id: string;
+    status: RunStatus;
+    capability_name: string;
+    call_id: string;
+    decision_outcome: PolicyDecision["outcome"];
+    reason: string;
+    result_status: CapabilityResult["status"];
+  };
+  events: DenyDemoEvent[];
 };
 
 export class SpineServiceError extends Error {}
@@ -399,6 +433,177 @@ export class SpineService {
     this.completeWorkItem(run);
     const completed = this.completeDemoRun();
     return { ...this.resultFromRun(completed), collective_memory_id: collective.id };
+  }
+
+  async denyDemo(input: { actor?: string | null } = {}): Promise<DenyDemoResult> {
+    const registry = this.persistDefaultOrg();
+    const approvalService = new ApprovalService(this.database);
+
+    // Leg 1: the rejection leg of the same durable approval that demo-approve
+    // resolves. An approval resolves exactly once, so each state dir shows one
+    // leg; seeing the other requires a fresh state dir.
+    let run = this.runs.get(RUN_ID);
+    if (!run || run.status === "queued" || run.status === "running") {
+      await this.startDemo();
+      run = this.runs.get(RUN_ID);
+    }
+    if (!run) {
+      throw new SpineServiceError("demo run could not be started");
+    }
+    if (run.status === "completed") {
+      throw new SpineServiceError(
+        "demo run is already completed: the promotion approval was approved. " +
+          "demo-deny rejects that same durable approval, so it needs a fresh state dir " +
+          "(delete .openmao/ or point OPENMAO_DB at a new file).",
+      );
+    }
+    let approval = approvalService.approvals.get(PROMOTION_APPROVAL_ID);
+    if (!approval) {
+      throw new SpineServiceError(`demo approval not found: ${PROMOTION_APPROVAL_ID}`);
+    }
+    if (run.status === "suspended_approval") {
+      approval = approvalService.reject(PROMOTION_APPROVAL_ID, {
+        workspace_id: WORKSPACE_ID,
+        actor: input.actor ?? null,
+      });
+      run = this.runs.get(RUN_ID) ?? run;
+    } else if (approval.status !== "rejected") {
+      throw new SpineServiceError(
+        `demo run already failed without a rejected approval: ${run.id}; ` +
+          "demo-deny needs a fresh state dir",
+      );
+    }
+    if (run.status !== "failed") {
+      throw new SpineServiceError(`rejected demo run did not fail: ${run.id}`);
+    }
+
+    // Leg 2: deny-by-default. The researcher invokes a capability that is
+    // registered in the workspace but was never granted to its role; the
+    // gateway blocks it before any provider runs, and the block is recorded.
+    const invocation = await this.runBlockedCapabilityDemo(registry);
+    const blockedRun = this.runs.get(DENY_RUN_ID);
+    if (!blockedRun) {
+      throw new SpineServiceError(`deny demo run not found: ${DENY_RUN_ID}`);
+    }
+    const result = invocation.result;
+    if (result?.status !== "blocked") {
+      throw new SpineServiceError("deny demo capability call was not blocked");
+    }
+
+    const events = [
+      this.eventSummary(`${PROMOTION_APPROVAL_ID}:rejected`),
+      this.eventSummary(`${PROMOTION_APPROVAL_ID}:run.failed`),
+      this.eventSummary(`${DENY_CAPABILITY_CALL_ID}:policy_decision`),
+      this.eventSummary(`${DENY_CAPABILITY_CALL_ID}:blocked`),
+      this.eventSummary(`${DENY_RUN_ID}:capability_blocked:run_failed`),
+    ].filter((event): event is DenyDemoEvent => event !== null);
+
+    return {
+      workspace_id: WORKSPACE_ID,
+      promotion_leg: {
+        run_id: RUN_ID,
+        status: run.status,
+        active_node: run.active_node,
+        approval_id: approval.id,
+        approval_status: approval.status,
+      },
+      blocked_leg: {
+        run_id: DENY_RUN_ID,
+        status: blockedRun.status,
+        capability_name: DENY_CAPABILITY_NAME,
+        call_id: invocation.call.id,
+        decision_outcome: invocation.decision.outcome,
+        reason: invocation.decision.reason,
+        result_status: result.status,
+      },
+      events,
+    };
+  }
+
+  private async runBlockedCapabilityDemo(registry: OrgRegistry): Promise<CapabilityInvocation> {
+    const capabilityRegistry = new CapabilityRegistryService(
+      this.database,
+      new GovernanceService(this.database, registry),
+      [new MockProvider()],
+    );
+    let run = this.runs.get(DENY_RUN_ID);
+    if (!run) {
+      run = this.runs.create(
+        RunSchema.parse({
+          id: DENY_RUN_ID,
+          workspace_id: WORKSPACE_ID,
+          status: "queued",
+          active_node: null,
+          suspended_approval_id: null,
+          created_at: DENY_RUN_CREATED_AT,
+          updated_at: DENY_RUN_CREATED_AT,
+        }),
+      );
+    }
+    if (run.status === "queued") {
+      run = this.runs.setStatus(run.id, "running", {
+        active_node: "run_started",
+        updated_at: DENY_RUN_CREATED_AT,
+      });
+      this.recordNode(run, "run_started", "run.started", { run_id: run.id }, [run.id]);
+      run = this.runs.get(run.id) ?? run;
+    }
+
+    // The task envelope references the deny run, so it can only be saved once
+    // the run row exists. Capability registration is idempotent alongside it.
+    this.database.transaction(() => {
+      if (!new CapabilityStore(this.database).get(WORKSPACE_ID, DENY_CAPABILITY_NAME)) {
+        capabilityRegistry.register(CapabilitySchema.parse(denyCapability()));
+      }
+      this.tasks.save(TaskEnvelopeSchema.parse(denyTaskEnvelope()));
+    });
+
+    // A new capability call requires a running run; replaying an existing call
+    // returns its recorded result without that check, which keeps this leg
+    // idempotent after the deny run has been failed.
+    const invocation = await capabilityRegistry.invoke(this.denyCapabilityCall());
+    run = this.runs.get(DENY_RUN_ID) ?? run;
+    if (run.status === "running" && invocation.result?.status === "blocked") {
+      this.failRun(
+        run,
+        "capability_blocked",
+        invocation.decision.reason,
+        [invocation.call.id, invocation.result.id],
+        { policy_decision: invocation.decision },
+      );
+    }
+    return invocation;
+  }
+
+  private denyCapabilityCall() {
+    return CapabilityCallSchema.parse({
+      id: DENY_CAPABILITY_CALL_ID,
+      workspace_id: WORKSPACE_ID,
+      run_id: DENY_RUN_ID,
+      capability_name: DENY_CAPABILITY_NAME,
+      provider: "mock",
+      input: { format: "csv" },
+      requested_by: RESEARCHER_AGENT_ID,
+      task_id: DENY_TASK_ID,
+      risk_level: "low",
+      idempotency_key: `${DENY_RUN_ID}:admin_export`,
+    });
+  }
+
+  private eventSummary(idempotencyKey: string): DenyDemoEvent | null {
+    const event = this.events.getByIdempotencyKey(WORKSPACE_ID, idempotencyKey);
+    if (!event) {
+      return null;
+    }
+    const data = event.payload.data;
+    const decision = data.policy_decision as { reason?: unknown } | undefined;
+    const reason = typeof data.reason === "string" ? data.reason : decision?.reason;
+    return {
+      kind: event.kind,
+      actor: event.actor,
+      run_id: event.run_id,
+      note: typeof reason === "string" ? reason : null,
+    };
   }
 
   private async resumeRunningRun(run: Run, registry: OrgRegistry): Promise<SpineRunResult> {
@@ -1107,6 +1312,42 @@ function defaultCapability() {
     },
     providers: ["mock"],
     default_permission: "enabled",
+  };
+}
+
+function denyCapability() {
+  return {
+    name: DENY_CAPABILITY_NAME,
+    workspace_id: WORKSPACE_ID,
+    description:
+      "Export the member directory. Registered for the deny demo and granted to no demo role, so deny-by-default blocks every call.",
+    canonical_input_schema: {
+      type: "object",
+      properties: { format: { type: "string" } },
+      required: ["format"],
+    },
+    canonical_output_schema: {
+      type: "object",
+      properties: { rows: { type: "array", items: { type: "string" } } },
+      required: ["rows"],
+    },
+    providers: ["mock"],
+    default_permission: "enabled",
+  };
+}
+
+function denyTaskEnvelope() {
+  return {
+    id: DENY_TASK_ID,
+    workspace_id: WORKSPACE_ID,
+    run_id: DENY_RUN_ID,
+    work_item_id: WORK_ITEM_ID,
+    from_agent: COORDINATOR_AGENT_ID,
+    to_agent: RESEARCHER_AGENT_ID,
+    objective: "Attempt an out-of-scope export to demonstrate deny-by-default.",
+    context_refs: [],
+    allowed_capabilities: [DENY_CAPABILITY_NAME],
+    approval_gates: [],
   };
 }
 

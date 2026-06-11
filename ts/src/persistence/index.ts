@@ -74,6 +74,11 @@ export {
 } from "./runs.js";
 export { initializeSchema, SCHEMA_SQL } from "./schema.js";
 export {
+  type ChainVerificationReport,
+  verifyAllChains,
+  type WorkspaceChainReport,
+} from "./verify.js";
+export {
   BoundedWorkEnvelopeConflictError,
   BoundedWorkEnvelopeStore,
   GoalConflictError,
