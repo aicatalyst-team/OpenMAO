@@ -472,6 +472,10 @@ describe("TypeScript operator surfaces", () => {
         method: "POST",
         headers: { "x-openmao-operator-token": operatorToken },
       });
+      const blankActor = await fetch(`${baseUrl}/runs/demo`, {
+        method: "POST",
+        headers: { "x-openmao-operator-token": operatorToken, "x-openmao-actor": "   " },
+      });
       const demo = (await fetch(`${baseUrl}/runs/demo`, {
         method: "POST",
         headers: operatorHeaders,
@@ -564,6 +568,7 @@ describe("TypeScript operator surfaces", () => {
 
       expect(rejected.status).toBe(403);
       expect(missingActor.status).toBe(400);
+      expect(blankActor.status).toBe(400);
       expect(demo.status).toBe("suspended_approval");
       expect(approvals.at(0)?.id).toBe(PROMOTION_APPROVAL_ID);
       expect(workspaces.at(0)?.id).toBe(WORKSPACE_ID);

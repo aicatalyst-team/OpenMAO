@@ -158,7 +158,9 @@ function requestContext(
   }
 
   const actor = headerValue(request, ACTOR_HEADER);
-  if (!actor) {
+  if (!actor || actor.trim().length === 0) {
+    // A whitespace-only actor must not pass as an identity (it would also trip the
+    // service-level SelfApprovalError blank-actor guard further down the stack).
     sendJson(response, 400, { error: "missing_actor" });
     return null;
   }
