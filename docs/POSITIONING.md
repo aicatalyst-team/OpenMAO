@@ -3,7 +3,8 @@
 This is a short orientation to how OpenMAO relates to the wider ecosystem of agent and AI
 infrastructure projects.
 
-Positioning snapshot: May 2026. This landscape moves quickly.
+Positioning snapshot: May 2026; related-work section refreshed June 2026. This landscape moves
+quickly.
 
 OpenMAO is an open, self-hostable organization-of-record for AI-native organizations: the substrate
 that owns work, roles, ownership, policy, approvals, memory, and the audit trail, so an organization
@@ -69,13 +70,45 @@ complements rather than competes with most of these:
 - **Memory layers** such as Mem0, Zep, Letta, and Cognee provide recall and personalization.
   OpenMAO governs and promotes institutional memory at the organization level and can sit above a
   memory store.
-- **Governance and control planes** provide policy and guardrails around agent calls. OpenMAO treats
-  this as substrate and adds the organizational layer above it.
+- **Runtime governance toolkits** such as Microsoft's Agent Governance Toolkit provide in-process
+  policy checks, identity, and guardrails around individual agent calls, integrating through each
+  framework's native extension points, with a deliberately stateless policy engine. They govern the
+  moment of the call. OpenMAO operates one altitude up and is stateful by design: it owns the
+  durable record the call belongs to — the work item, the approval as durable state that survives
+  restarts, the hash-chained log of intent and outcome, and the institutional memory the
+  organization keeps. The two compose: an agent instrumented by such a toolkit can run as a worker
+  under OpenMAO authority.
+- **Runtime sandboxes** confine what an agent process can physically touch — filesystem, network,
+  processes — from outside the agent. OpenMAO does not sandbox; it governs which organizational
+  actions may happen at all, and records them. Use both layers for defense in depth.
+- **Observability and tracing** tools such as Langfuse capture what agents did, for analysis.
+  OpenMAO's event log is different in kind: it is the authorizing record, written before execution
+  and sealed after it, not telemetry collected alongside.
+- **Policy engines** such as OPA and Cedar evaluate authorization policies given a request.
+  OpenMAO's governance gate is a natural place to consult such an engine; OpenMAO additionally owns
+  what they do not — approvals as durable state, memory promotion, and the organization-of-record.
 - **Durable-execution substrates** such as Temporal, Restate, Inngest, and DBOS make reliable
   long-running workflows possible. OpenMAO is designed to run on top of such a substrate when the
   local spine outgrows simple persistence.
 - **Self-improving agents** improve at the agent or skill level. OpenMAO's frontier is governed
   organizational self-correction: the organization revising its own roles, policies, SOPs,
   capabilities, and workflows from evidence.
+
+## Questions That Separate the Layers
+
+When comparing any two projects in this space, including OpenMAO, these questions cut through
+shared vocabulary:
+
+1. Can it block an agent from ever holding the raw credential, or does it check calls made with
+   credentials the agent already has?
+2. Is an approval a durable state that survives a crash, or an in-memory callback?
+3. Is the audit trail the authorizing act, written before execution, or telemetry written after?
+4. Does anything remember what the organization learned, with governance over how that memory is
+   promoted?
+5. Does it remain valuable if you swap the agent framework underneath?
+6. Where does enforcement physically live — inside the agent's process, or outside it?
+
+OpenMAO's own answers, including the places where they are honest "not yet"s, are in
+[LIMITATIONS.md](LIMITATIONS.md).
 
 If a project belongs here, or a description needs correcting, contributions are welcome.

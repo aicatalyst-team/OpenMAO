@@ -151,6 +151,7 @@ npm run cli -- learning proposals
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - architecture and invariants.
 - [docs/ROADMAP.md](docs/ROADMAP.md) - staged path from wedge to flywheel to autonomy dial.
 - [docs/POSITIONING.md](docs/POSITIONING.md) - where OpenMAO fits in the wider ecosystem.
+- [docs/LIMITATIONS.md](docs/LIMITATIONS.md) - known limitations, stated honestly, with the OWASP agentic-risk mapping.
 - [docs/V0_SCOPE.md](docs/V0_SCOPE.md) - what the first release ships and what is deferred.
 - [docs/VOCABULARY.md](docs/VOCABULARY.md) - canonical terms.
 - [docs/DEPLOYMENT_MODES.md](docs/DEPLOYMENT_MODES.md) - local, managed, and enterprise shapes.
