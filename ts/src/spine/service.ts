@@ -53,9 +53,11 @@ import {
   RunStore,
   TaskEnvelopeStore,
   TraceStore,
+  WorkItemConflictError,
   WorkItemStore,
   WorkspaceStore,
 } from "../persistence/index.js";
+import { jsonEqual } from "../persistence/serialization.js";
 
 export const WORKSPACE_ID = "ws_11111111111111111111111111111111";
 export const ORG_ID = "org_22222222222222222222222222222222";
@@ -584,7 +586,26 @@ export class SpineService {
         agentStore.save(agent);
       }
       new GoalStore(this.database).save(GoalSchema.parse(defaultGoal()));
-      new WorkItemStore(this.database).save(WorkItemSchema.parse(defaultWorkItem()));
+      // Re-entrant seeding: the demo run mutates this work item (e.g. status -> "done"), so a
+      // second init must adopt the existing item instead of re-saving the pristine fixture.
+      // Adoption requires fixture identity: `status` is the only field the demo lifecycle
+      // mutates (completeWorkItem -> setStatus(WORK_ITEM_ID, "done")), so an existing row
+      // that differs from defaultWorkItem() in any other field is a foreign work item
+      // occupying the demo id and must surface as a conflict, not be silently adopted.
+      const workItemStore = new WorkItemStore(this.database);
+      const fixtureWorkItem = WorkItemSchema.parse(defaultWorkItem());
+      const existingWorkItem = workItemStore.get(WORK_ITEM_ID);
+      if (!existingWorkItem) {
+        workItemStore.save(fixtureWorkItem);
+      } else {
+        const { status: _existingStatus, ...existingImmutable } = existingWorkItem;
+        const { status: _fixtureStatus, ...fixtureImmutable } = fixtureWorkItem;
+        if (!jsonEqual(existingImmutable, fixtureImmutable)) {
+          throw new WorkItemConflictError(
+            `work item already exists and does not match the demo fixture: ${WORK_ITEM_ID}`,
+          );
+        }
+      }
       this.events.append({
         workspace_id: workspace.id,
         kind: "workspace.created",
