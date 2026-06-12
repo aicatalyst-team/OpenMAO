@@ -1,0 +1,30 @@
+FROM registry.access.redhat.com/ubi9/nodejs-22
+
+WORKDIR /opt/app-root/src
+
+# Install native build tools for better-sqlite3 compilation
+USER 0
+RUN dnf install -y gcc gcc-c++ make python3 && dnf clean all
+USER 1001
+
+# Copy dependency files first (for layer caching)
+COPY package.json package-lock.json ./
+
+# Install all dependencies (including devDependencies for tsx/typescript)
+RUN npm ci
+
+# Copy application source
+COPY . .
+
+# OpenShift compatibility: group 0 permissions
+RUN chgrp -R 0 /opt/app-root && chmod -R g=u /opt/app-root
+
+EXPOSE 8080
+
+ENV PORT=8080
+ENV OPENMAO_LISTEN_HOST=0.0.0.0
+
+USER 1001
+
+# Use tsx to run the OpenShift-compatible entrypoint
+CMD ["npx", "tsx", "entrypoint.mjs"]

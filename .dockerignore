@@ -1,0 +1,15 @@
+.git
+*.md
+!README.md
+!CHANGELOG.md
+LICENSE
+node_modules/
+.openmao/
+docs/
+tests/
+coverage/
+dist/
+build/
+.turbo/
+.tsbuildinfo
+.env*
