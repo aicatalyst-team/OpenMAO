@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openmao
+  namespace: poc-openmao
+  labels:
+    app: openmao
+    autopoc.io/project: openmao
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openmao
+  template:
+    metadata:
+      labels:
+        app: openmao
+    spec:
+      containers:
+        - name: openmao
+          image: quay.io/aicatalyst/openmao:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: OPENMAO_LISTEN_HOST
+              value: "0.0.0.0"
+            - name: OPENMAO_OPERATOR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openmao-secrets
+                  key: OPENMAO_OPERATOR_TOKEN
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: poc-openmao
+  labels:
+    app.kubernetes.io/name: openmao
+    app.kubernetes.io/managed-by: autopoc

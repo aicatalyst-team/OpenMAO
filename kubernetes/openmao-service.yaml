@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: openmao
+  namespace: poc-openmao
+  labels:
+    app: openmao
+    autopoc.io/project: openmao
+spec:
+  type: ClusterIP
+  selector:
+    app: openmao
+  ports:
+    - port: 8080
+      targetPort: 8080
