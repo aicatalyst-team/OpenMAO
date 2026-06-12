@@ -16,7 +16,8 @@ RUN npm ci
 # Copy application source
 COPY . .
 
-# OpenShift compatibility: group 0 permissions
+# OpenShift compatibility: group 0 permissions (must run as root)
+USER 0
 RUN chgrp -R 0 /opt/app-root && chmod -R g=u /opt/app-root
 
 EXPOSE 8080
